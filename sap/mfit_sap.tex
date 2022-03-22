@@ -94,7 +94,7 @@
       0.2     & 2021-07-27 & JAT    & Revisions                    \\
       0.3     & 2021-09-23 & JAT    & Revisions of outcomes        \\
       0.4     & 2021-10-21 & JAT    & Revisions of section 6 and 7 \\
-      0.5     & 2022-03-17 & JAT    & Revise primary outcome model \\
+      0.5     & 2022-03-17 & JAT    & Revise primary model         \\
       \hline
     \end{tabular}
   \end{center}
@@ -575,7 +575,7 @@ Participants are asked to complete a pre and post exercise survey. For each inte
 
 \subsubsection{Intention-to-treat Analyses}
 
-The primary analysis will include all participants randomised to an intervention arm regardless of whether intercurrent events disrupted the allocated exercise regime and irrespective of adherence. That is, we will adopt an intention-to-treat (ITT) estimand (treatment-policy) for the analyses with all randomised participants contributing to the analysis such that:
+The primary analysis will include all participants randomised to an intervention arm regardless of whether intercurrent events disrupted the allocated exercise regime and irrespective of adherence. That is, we will adopt an intention-to-treat (ITT) estimand (de facto treatment-policy) for the analyses with all randomised participants contributing to the analysis such that:
 
 \begin{itemize}
   \tightlist
@@ -649,11 +649,11 @@ A landmark analysis at visit $j=3$ informs the primary comparison between treatm
 For priors, we specify
 $$
   \begin{aligned}
-    \sigma_j & \sim \text{Student-t}(3, 0, 5^2),\quad j=1,2,3,4              \\
-    \Omega   & \sim \text{LKJ}(2)                                            \\
-    \alpha   & \sim \text{Normal}\left(\text{med}(y), \text{mad}(y)^2\right) \\
-    \beta_j  & \sim \text{Normal}\left(0, 5\right),\quad j=1,2,3,4           \\
-    \xi_{pj} & \sim \text{Normal}(0, 5),\quad p=1,2,3,\quad j=1,2,3,4
+    \sigma_j & \sim \text{Student-t}(3, 0, 5^2),\quad j=1,2,3,4                    \\
+    \Omega   & \sim \text{LKJ}(2)                                                  \\
+    \alpha   & \sim \text{Normal}\left(\text{med}(y), \text{mad}(y)^2\right)       \\
+    \beta_j  & \sim \text{Normal}\left(0, 5^2\right),\quad j=1,2,3,4               \\
+    \xi_{pj} & \sim \text{Normal}\left(0, 5^2\right),\quad p=1,2,3,\quad j=1,2,3,4
   \end{aligned}
 $$
 where $\text{med}(y)$ and $\text{mad}(y)$ are the sample median and scaled median absolute deviation respectively.
@@ -726,14 +726,13 @@ There are two aims for the analysis on SONG-HD Fatigue:
   \item validation of the SONG-HD Fatigue score (WHAT METHODS ARE PROPOSED FOR THIS?)
 \end{enumerate}
 
-We will analyse the score using an ordinal mixed effects model. The model will include fixed terms for study arm, measurement occassion, the interaction between study arm and measurement occasion, baseline score, and random intercepts for participant. Data from each available measurement occassion will be included.
+We will analyse the score using an ordinal mixed effects model. The model will include fixed terms for study arm, visit, the interaction between study arm and visit, baseline score, and random intercepts for participant. Data from each available measurement occassion will be included.
 
 \phantomsection
 \label{analysis:pfs}
 \hyperref[outcome:pfs]{\textbf{PFS}}
 
-The aim is to use PFS to compare the baseline adjusted fatigue at 4, 8, 12 and 36 weeks by intervention. Physical and mental fatigue scores will be analysed independently using linear mixed effects models. The model will include fixed terms for arm, visit, their interaction, and random intercept and visit coefficients for each participant. Data from all available measurement occassions will be included.
-
+The aim is to use PFS to compare the baseline adjusted fatigue at 4, 8, 12 and 36 weeks by intervention. Although the scores are ordinal (0 to 50), the Physical and mental fatigue scores will be analysed jointly as continuous outcomes using a multivariate linear mixed effects model. The model will include fixed terms for arm, visit, their interaction, and random intercept and visit coefficients for each participant. Residual correlation between outcomes at the same measurement occasion will be included in the model. Data from all available measurement occassions will be included.
 
 \phantomsection
 \label{analysis:eq5d5l}
@@ -741,33 +740,27 @@ The aim is to use PFS to compare the baseline adjusted fatigue at 4, 8, 12 and 3
 
 The aim is to use the EQ-5D-5L score to compare baseline adjusted quality of life at 4, 8, 12 and 36 weeks by intervention.
 
-The amount of missingness and patterns of missingness will be reported, including, profile-item missingness and complete non-response. In analysing participant profiles, we may treat the entire profile as missing if any specific item is missng.
+The amount of missingness and patterns of missingness will be reported, including, profile-item missingness and complete non-response. In analysing participant profiles, we may treat the entire profile as missing if any specific item is missng. Profiles will be reported by measurement occassion and arm, and in aggregate for each visit across all arms. These will be reported as frequencies and proportions of participants within each health-state ordered by frequency in aggregate, possibly restricted to the most frequently observed health-states.
 
-Profiles will be reported by measurement occassion and arm, and in aggregate for each visit across all arms. These will be reported as frequencies and proportions of participants within each health-state ordered by frequency in aggregate, possibly restricted to the most frequently observed health-states.
-
-Inference for intervention effect will be assessed by ordinal regression with fixed terms for study arm, measurement occassion, and EQ-5D-5L item, as well as random intercepts for participant.
-
-The frequency of VAS responses will presented as a bar plot for each arm and visit occassion. For inference, VAS scores will be analysed using linear mixed model with fixed terms for arm, and measurement occassion, and random coefficients for visit.
-
+Inference for intervention effect will be assessed by ordinal regression with fixed terms for study arm, measurement occassion, and EQ-5D-5L item, as well as random intercepts for participant. The frequency of VAS responses will be presented for each arm and visit occassion. For inference, VAS scores will be analysed using linear mixed model with fixed terms for arm, visit, their interaction, and random intercepts and coefficients for visit by participant.
 
 \phantomsection
 \label{analysis:hads}
 \hyperref[outcome:hads]{\textbf{HADS}}
 
-The aim is to use HADS to compare the baseline adjusted mood at 4, 8, 12 and 36 weeks by study arm. Anxiety and depression scores will be analysed as independent responses. Each response will be analysed using ordinal regression with fixed terms for arm, measurement occassion, and participant specific intercepts.
+The aim is to use HADS to compare the baseline adjusted mood at 4, 8, 12 and 36 weeks by study arm. Anxiety and depression scores will be analysed as separate responses. Each response will be analysed using ordinal regression (cumulative logistic with proportional odds) with fixed terms for arm, measurement occassion, and participant specific intercepts which are correlated across the outcomes.
 
 \phantomsection
 \label{analysis:promis-aspra}
 \hyperref[outcome:promis-apsra]{\textbf{PROMIS-APSRA}}
 
-The aim is to use the PROMIS Scale to compare baseline adjusted rates of social participation at 4, 8, 12 and 36 weeks by intervention. The aggregated score will be analysed using ordinal regression with fixed terms for arm, and measurement occassion, and random intercepts for participant.
+The aim is to use the PROMIS Scale to compare baseline adjusted rates of social participation at 4, 8, 12 and 36 weeks by intervention. The aggregated score will be analysed using ordinal regression (cumulative logistic with proportional odds)  with fixed terms for arm, vist, their interaction, baseline score, and random intercepts for participant.
 
 \phantomsection
 \label{analysis:msus}
 \hyperref[outcome:msus]{\textbf{mSUS}}
 
 The items comprising mSUS will each be summarised in aggregate across the exercise arms.
-
 
 \subsubsection{Exercise professional assessed outcomes}\label{exercise-professional-assessed-outcomes}
 
