@@ -1,0 +1,461 @@
+---
+title: "MFIT Sample Size"
+subtitle: "Trial Operating Characteristics"
+author: "James Totterdell"
+date: "`r Sys.Date()`"
+output: 
+  bookdown::pdf_document2:
+    extra_dependencies: ["flafter", "fontspec"]
+    latex_engine: xelatex
+    dev: cairo_pdf
+header-includes:
+   - \usepackage{setspace}
+   - \onehalfspacing
+monofont: Inconsolata
+romanfont: Linux Libertine
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.height = 3,
+  fig.width = 4
+)
+
+res_dir <- "~/out_files/mfit_sims/"
+```
+
+
+```{r pkgs}
+library(data.table)
+library(ggplot2)
+library(kableExtra)
+
+theme_set(
+  theme_bw(base_size = 10, base_family = "Linux Libertine") +
+    theme(
+      legend.position = "top",
+      legend.title.align = 0.5,
+      legend.key.height = unit(0.5, "line")
+    )
+)
+```
+
+
+# Fixed-Sample Size Power
+
+```{r fixed-ss-power}
+drop_out <- seq(1, 0.8, -0.05)
+max_n <- 100
+effect_size <- seq(0, 1, 0.005)
+power <- sapply(drop_out, function(d) {
+  power.t.test(
+    n = max_n * d,
+    delta = effect_size,
+    sig.level = 0.025,
+    alternative = "one.sided"
+  )$power
+})
+```
+
+Ignoring repeated measures, a sample size of 100 participants per arm, assuming drop-out of 20%, would provide power 0.8 for an effect size of $\Delta = \mu_1-\mu_0 = `r effect_size[which(power[, 5] >= 0.8)[1]]`\sigma$.
+For example, assuming that FACIT-Fatigue scores are distributed according to $Y_j\sim(\mu_j,5^2)$, then the sample size would have power 0.8 for an increase of 2.25 in group means from control to active treatment.
+
+```{r fixed-ss-power-plot, fig.cap="Fixed sample size power for two sample $t$-test of size $\\alpha=0.025$ with $n=100$ per arm, assuming varying drop-out and effect size, $\\delta$, relative to the standard deviation $\\sigma$."}
+par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Linux Libertine")
+matplot(effect_size, power,
+  type = "l", col = seq_along(drop_out), lty = 1,
+  xlab = expression("Effect size, " ~ delta * ", where" ~ mu[1] - mu[0] ~ "=" ~ delta * sigma),
+  ylab = "Power"
+)
+segments(
+  x0 = 0,
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = power[min(which(power[, 5] >= 0.8)), 5],
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+segments(
+  x0 = effect_size[min(which(power[, 5] >= 0.8))],
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = 0,
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+legend("bottomright",
+  legend = formatC(100 * (1 - drop_out), width = 2),
+  lty = 1,
+  xjust = 1,
+  col = seq_along(drop_out),
+  cex = 1,
+  bty = "n",
+  title = "Drop-out, %"
+)
+```
+
+\clearpage
+
+# Group-Sequential Design
+
+```{r, include=FALSE, eval=FALSE}
+library(rpact)
+sampleSizeFixed <- getSampleSizeMeans(
+  alternative = 2.5, stDev = 5, sided = 1, alpha = 0.025, beta = 0.12
+)
+design <- getDesignGroupSequential(
+  sided = 1, alpha = 0.025, beta = 0.17,
+  informationRates = c(0.25, 0.5, 0.75, 1),
+  typeOfDesign = "OF"
+)
+sampleSizeResultGS <- getSampleSizeMeans(
+  design,
+  alternative = 2.5, stDev = 5, allocationRatioPlanned = 2
+)
+sampleSizeResultGS
+summary(sampleSizeResultGS)
+```
+
+The study consists of four arms: one control group and three active interventions.
+Accrual is assumed to be on average 3 participants per week up to a maximum of 400 participants.
+
+Denote the treatment group means at each time-point by $\mu_{jt},\ j=0,1,2,3$ for $t=0,1,2,3$ corresponding to baseline, 4, 8, and 12 weeks after randomisation.
+The primary endpoint is at 12-weeks after randomisation.
+
+The primary quantity of interest is the difference in FACIT-Fatigue at 12-weeks for each active treatment group relative to the control group, that is,
+$$
+\Delta_j = \mu_{j,3} - \mu_{0,3},\quad j=1,2,3.
+$$
+Another quantity of interest is the relative effectiveness of each active treatment compared to each other active treatment.
+$$
+\delta_j = \mu_{j,3} - \max_{j^\prime\ne j} \mu_{j^\prime,t},\quad j=1,2,3.
+$$
+
+We define an active treatment to be best if mean FACIT-Fatigue is maximal (amongst all active treatments) under that treatment, that is, $\delta_j > 0$, and we define an active treatment to be effective, if it has higher mean FACIT-Fatigue compared to control, $\Delta_j>0$.
+
+The truth of these assertions are unknown, but we quantify their probability under the assumed model according to
+$$
+\begin{aligned}
+\omega_j &= \text{Pr}(\Delta_j > 0 | \text{data}) \\
+\pi_j &= \text{Pr}(\delta_j > 0|\text{data})
+\end{aligned}
+$$
+such that $\omega_j$ is the posterior probability that treatment $j$ is effective, and $\pi_j$ is the posterior probability that treatment $j$ is best amongst the active treatments.
+
+## Model
+
+The analysis model used in the simulations ignored the longitudinal outcomes, using was
+$$
+\begin{aligned}
+y_{i,3}|\alpha,\beta,\sigma &\sim \text{Normal}(\alpha + x_{\texttt{trt}[i]}^\mathsf{T}\beta, \sigma^2) \\
+\mu_{j,3} &= \alpha + x_j^\mathsf{T}\beta \\
+\alpha &\sim \text{Normal}(40, 5) \\
+\beta &\sim \text{Normal}(0, 5) \\
+\sigma &\sim \text{Half-}t(3, 0, 5)
+\end{aligned}
+$$
+where $x_{\texttt{trt}[i]}$ for $\texttt{trt}[i]\in\{0,1,2,3\}$ denotes the treatment design vector corresponding to participants $i$'s assigned treatment.
+
+## Interim Analyses
+
+Interim analyses are scheduled to occur when 100, 200, 300 and 400 participants reach their primary endpoint.
+
+At each interim analysis, we pre-specify a number of decision rules in terms of the previously defined quantities.
+These decision rules may be to drop specific treatment arms, or to stop the trial altogether.
+We denote by $J^\prime$ the number of available arms at the time of the interim analysis, including control.
+At the first interim analysis, $J^\prime=4$.
+
+- **Effective**: if $\omega_j > \epsilon_0$, then treatment $j$ has probability greater than $\epsilon_0$ of being effective compared to control.
+- **Ineffective**: if $\omega_j < 1-\epsilon_1$ then treatment $j$ has probability greater than $\epsilon_1$ of being ineffective compared to control, and therefore may be dropped from the trial.
+- **Superiority**: if $\pi_j > \epsilon_2$, then treatment $j$ has probability greater than $\epsilon_1$ of being the best active treatment, and therefore, all other active treatments may be dropped from the trial.
+- **Inferiority**: if $\pi_j < \epsilon_2/(J^\prime-2)$, then treatment $j$ has probability less than $\epsilon_1/(J^\prime-2)$ of being the best active treatment, and therefore may be dropped from the trial.
+- **Stopping**: the trial may be stopped early if one active treatment is superior and effective.
+
+Note that, once a treatment has been dropped, we do not allow it to come back into the trial.
+Therefore, once a treatment has been declared harmful, inferior, or superior, then that assertion is assumed to hold true for the remainder of the trial.
+An arm which has been dropped is not considered to possibly be the best arm, and therefore, is excluded from future calculations of $\pi_j$. That is, we enforce $\pi_j=0$ for that arm.
+
+Effectiveness may change throughout of the course of the trial, for example, an intervention may meet the threshold following the first analysis, but no longer does following the second analysis, etc.
+
+## Response-Adaptive Randomisation
+
+Initially, each treatment arm are allocated with equal-probability of $r_j=1/J^\prime$ where $J^\prime=4$.
+The probability of allocation to the control group is fixed throughout the trial to be equal to the reciprical of the number of arms still on study, $r_0 = 1/J^\prime$.
+
+For the remaining arms, the allocation may be zero if the arm has been dropped, or it may be proportional to the probability it is the best active treatment.
+
+Following each interim analysis, the allocation probability of the 3 active arms are updated according to
+$$
+r_j = \begin{cases}
+0 & \text{if the arm has been dropped} \\
+\frac{\pi_j^k}{\sum_{j=1}^3\pi_j^k} & \text{otherwise}
+\end{cases},\quad j=1,2,3.
+$$
+for some scaling factor $k$.
+
+Note that if $k=0$, then $r_j = 1/J^\prime$ for each arm and if $k=1$ then $r_j = \pi_j$.
+
+This achieves two arms: more participants are expected to receive the best active intervention, and increased power of the best active intervention versus control.
+
+```{r, fig.cap="Scaling of probability best for use in RAR. Note small values are upweighted more as $k$ decreases towards 0."}
+f <- function(p, k = 1) p^k
+par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Linux Libertine")
+curve(f, 0, 1, xlab = expression(pi[j]), ylab = expression(pi[j]^k))
+curve(f(x, k = 0.75), 0, 1, add = T, col = 2)
+curve(f(x, k = 0.50), 0, 1, add = T, col = 3)
+curve(f(x, k = 0.25), 0, 1, add = T, col = 4)
+legend("bottomright",
+  legend = c("1.00", "0.75", "0.50", "0.25"),
+  bty = "n",
+  lty = 1, col = 1:4,
+  title = "scale, k"
+)
+```
+
+\clearpage
+
+# Group-sequential Operating Characteristics
+
+The simulations presented here assume:
+
+- expected accrual of 3 participants per week according to homogeneous Poisson process.
+- interim analysis when 100, 200, 300, and 400 participants reach their primary endpoint.
+- 20% drop-out, so that, for example when 100 participants reach their primary endpoint, 20 have missing 12-week FACIT-Fatigue data.
+- decision thresholds of $\epsilon_0=\epsilon_1=\epsilon_2\in\{0.975,0.98,0.99\}$.
+- ignores repeated measures analysing 12-week FACIT-Fatigue as response in a linear model conditional on treatment group 
+
+
+```{r}
+sim_files <- grep("with_control_stopping_trt", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_config[, Effect := rep(c("0", rep(c("1SD", "0.5SD"), times = 3)), times = 3)]
+sim_config[, Number := rep(c(0, 1, 1, 2, 2, 3, 3), 3)]
+```
+
+
+```{r}
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config[, .(config, eff_eps, sup_eps, Effect, Number)], on = "config"]
+```
+
+
+```{r, include = FALSE}
+# stopped early
+sim_final[eff_eps == 0.98, .(N = sum(n_enr)), keyby = .(config, Effect, Number, trial)][, mean(N < 320), keyby = .(config, Effect, Number)]
+```
+
+
+```{r oc-summary}
+oc_summary <- sim_final[eff_eps == 0.98,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kabtab <- kable(oc_summary,
+  format = "latex",
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.98$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+
+writeLines(kabtab, con = file.path("outputs", "tables", "trial-oc-98.tex"))
+```
+
+
+```{r dist-sample-size, fig.cap = "Distribution of number of participants allocated to each treatment by effect size and number of affected treatments."}
+ggplot(
+  sim_final[, .(config, Effect, Number, n_enr, variable)],
+  aes(variable, n_enr)
+) +
+  facet_grid(Effect ~ Number) +
+  geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  labs(x = "Treatment arm", y = "Number allocated") +
+  scale_x_discrete(labels = 0:3)
+```
+
+\clearpage
+
+```{r oc-summary-second}
+oc_summary <- sim_final[eff_eps == 0.975,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.975$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+```
+
+\clearpage
+
+```{r oc-summary-third}
+oc_summary <- sim_final[eff_eps == 0.99,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.99$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+```
+
+\clearpage
+
+## Flexible Boundary
+
+
+```{r}
+sim_files <- grep("with_flex_control_stopping_trt", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_config[, Effect := rep(c("0", rep(c("1SD", "0.5SD"), times = 3)), times = 3)]
+sim_config[, Number := rep(c(0, 1, 1, 2, 2, 3, 3), 3)]
+```
+
+
+```{r}
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config[, .(config, eff_eps, sup_eps, Effect, Number)], on = "config"]
+```
+
+
+```{r, include=FALSE}
+# stopped early
+sim_final[sapply(sim_final$eff_eps, function(a) a(1) == 0.975), .(N = sum(n_enr)), keyby = .(config, Effect, Number, trial)][, mean(N < 320), keyby = .(config, Effect, Number)]
+```
+
+
+```{r oc-summary-flex}
+oc_summary <- sim_final[sapply(sim_final$eff_eps, function(a) a(1) == 0.975),
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.9^{\\sqrt{t}}$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+```
+
+
+```{r dist-sample-size-flex, fig.cap = "Distribution of number of participants allocated to each treatment by effect size and number of affected treatments."}
+ggplot(
+  sim_final[, .(config, Effect, Number, n_enr, variable)],
+  aes(variable, n_enr)
+) +
+  facet_grid(Effect ~ Number) +
+  geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  labs(x = "Treatment arm", y = "Number allocated") +
+  scale_x_discrete(labels = 0:3)
+```
+
+
+\clearpage
+
+```{r oc-summary-second-flex}
+oc_summary <- sim_final[sapply(sim_final$eff_eps, function(a) a(1) == 0.95),
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.95^{\\sqrt{t}}$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+```
+
+\clearpage
+
+```{r oc-summary-third-flex}
+oc_summary <- sim_final[sapply(sim_final$eff_eps, function(a) a(1) == 0.9),
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.975^{\\sqrt{t}}$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+```

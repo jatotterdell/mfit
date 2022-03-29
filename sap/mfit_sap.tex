@@ -65,11 +65,12 @@
     {\LARGE \bfseries  \@subtitle }\\[2ex]
     {\large Version 0.1}\\[2ex]
     {\large \@date}\\[10ex]
-    \fbox{\begin{tabular}{p{0.20\linewidth}p{0.5\linewidth}}
-        Sponsor:         & \\
-        Registration:    & \\
-        Study Co-Chairs: & \\
-                         &
+    \fbox{\begin{tabular}{p{0.30\linewidth}p{0.5\linewidth}}
+        Sponsor:               & The University of Queensland acting through the Australasian Kidney Trials Network (AKTN) \\
+                               &                                                                                           \\
+        Registration (ANZCTR): & ACTRN12620000408987                                                                       \\
+                               &                                                                                           \\
+        Chief Investigator:    & Professor Allison Tong                                                                    \\
       \end{tabular}}
   \end{center}
 \end{titlepage}
@@ -110,7 +111,10 @@ This statistical analysis plan (SAP) outline the data and procedures for analysi
 
 The following documents were reviewed when preparing this SAP:
 
-- M-FIT Study Protocol version 0.9.7, 2 September 2021
+\begin{itemize}\tightlist
+  \item M-FIT Study Protocol version 0.9.7, 2 September 2021
+  \item M-FIT Data Dictionary, 19 October 2021 (REDCap extract date)
+\end{itemize}
 
 \clearpage
 
@@ -182,8 +186,6 @@ The primary analysis is based on the 13-item 52-point FACIT-Fatigue\footnote{FAC
 The therapies are delivered via an initial face-to-face assessment with an exercise physiologist and are followed-up over 12 weeks with weekly telehealth visits in weeks 1 to 4, 6 and 8 and a final follow up session in week 12. Additionally, there is direction from a mobile-app.
 
 Data collection is in part entered by study personnel, but also provided directly by the participant since they respond to surveys via the mobile application.
-
-The design is a Bayesian (group sequential) adaptive randomised trial with response adaptive randomisation.
 
 \clearpage
 
@@ -607,7 +609,7 @@ For all outcomes, the primary analysis will use the intention-to-treat populatio
 
 \section{Statistical Modelling}\label{statistical-modelling}
 
-In this section we outline considerations relevant to the statistical modelling approach used in M-FIT. These include a discussion on the model specifications, subgroup, secondary and other analyses.
+In this section we outline considerations relevant to the statistical modelling approach used in M-FIT. These include a discussion on the model specifications, subgroup, secondary and other analyses. The econonomic analyses are not discussed in this SAP.
 
 \subsection{Primary Outcome Model}\label{primary-model}
 
@@ -732,7 +734,9 @@ We will analyse the score using an ordinal mixed effects model. The model will i
 \label{analysis:pfs}
 \hyperref[outcome:pfs]{\textbf{PFS}}
 
-The aim is to use PFS to compare the baseline adjusted fatigue at 4, 8, 12 and 36 weeks by intervention. Although the scores are ordinal (0 to 50), the Physical and mental fatigue scores will be analysed jointly as continuous outcomes using a multivariate linear mixed effects model. The model will include fixed terms for arm, visit, their interaction, and random intercept and visit coefficients for each participant. Residual correlation between outcomes at the same measurement occasion will be included in the model. Data from all available measurement occassions will be included.
+The aim is to use PFS to compare fatigue at 4, 8, 12 and 36 weeks by intervention. Although the scores are ordinal (0 to 50), the Physical and mental fatigue scores will be analysed jointly as continuous outcomes using a multivariate linear model. The model will include fixed terms for arm, visit, and their interaction for the mean response. The model will assume unstructured covariance for responses within each participant. The outcomes at baseline will be constrained to have equal mean across all treatment groups. Data from all available measurement occassions will be included.
+
+If issues are encountered with the model, then a more parsimonious correlation between outcomes may be assumed (e.g. Kronecker product of outcome and visit correlations, or assume independence between the outcomes, i.e. analyse them separately).
 
 \phantomsection
 \label{analysis:eq5d5l}
@@ -748,13 +752,13 @@ Inference for intervention effect will be assessed by ordinal regression with fi
 \label{analysis:hads}
 \hyperref[outcome:hads]{\textbf{HADS}}
 
-The aim is to use HADS to compare the baseline adjusted mood at 4, 8, 12 and 36 weeks by study arm. Anxiety and depression scores will be analysed as separate responses. Each response will be analysed using ordinal regression (cumulative logistic with proportional odds) with fixed terms for arm, measurement occassion, and participant specific intercepts which are correlated across the outcomes.
+The aim is to use HADS to compare mood at 4, 8, 12 and 36 weeks by study arm. Anxiety and depression scores will be analysed as separate responses. Each response will be analysed using ordinal regression (cumulative logistic with proportional odds) with fixed terms for arm, measurement occassion, and participant specific intercepts which are correlated across the outcomes.
 
 \phantomsection
 \label{analysis:promis-aspra}
 \hyperref[outcome:promis-apsra]{\textbf{PROMIS-APSRA}}
 
-The aim is to use the PROMIS Scale to compare baseline adjusted rates of social participation at 4, 8, 12 and 36 weeks by intervention. The aggregated score will be analysed using ordinal regression (cumulative logistic with proportional odds)  with fixed terms for arm, vist, their interaction, baseline score, and random intercepts for participant.
+The aim is to use the PROMIS Scale to compare social participation at 4, 8, 12 and 36 weeks by intervention. The aggregated score will be analysed using ordinal regression (cumulative logistic with proportional odds)  with fixed terms for arm, vist, their interaction, baseline score, and random intercepts for participant.
 
 \phantomsection
 \label{analysis:msus}
@@ -1028,14 +1032,14 @@ $$
 and then following confirmation that arms are to be dropped
 $$
   \begin{aligned}
-    r_{t0} & = \frac{1}{|\mathcal{A}_t + 1}               \\
+    r_{t0} & = \frac{1}{|\mathcal{A}_t + 1|}               \\
     r_{tk} & = \begin{cases}
       0                                                                       & \text{if } k \notin \mathcal{A}_t \\
       (1 - r_{t0}) \frac{r_{tk}^\star}{\sum_{j\in\mathcal{A}_t} r_{tj}^\star} & \text{if } k \in \mathcal{A}_t.
     \end{cases}, \quad k=1,2,3.
   \end{aligned}
 $$
-In this manner, if a decision is made to \emph{not} drop an arm despite it meeting the criteria, the update to allocations would not need to be revised.
+In this manner, if a decision is made to \emph{not} drop an arm despite it meeting the criteria, the update to allocations would not need to be revised and there is no delay in applying the updated allocation ratios whilst confirmation of arm dropping is pending.
 
 \clearpage
 
@@ -1088,9 +1092,84 @@ Communication of trial outcomes will not occur until after termination of recrui
 
 \printbibliography[heading=bibintoc]
 
-% \clearpage
+\clearpage
 
-% \addsec{Appendix I: Study Database and Derived Variables}\label{study-database}
+\addsec{Appendix I: Trial Operating Characteristics}\label{trial-simulations}
+
+\subsection*{Simulation Model}
+
+The analysis model used in the simulations ignored the longitudinal outcomes, using was
+$$
+  \begin{aligned}
+    y_{i,3}|\alpha,\beta,\sigma & \sim \text{Normal}(\alpha + x_{\texttt{trt}[i]}^\mathsf{T}\beta, \sigma^2) \\
+    \mu_{j,3}                   & = \alpha + x_j^\mathsf{T}\beta                                             \\
+    \alpha                      & \sim \text{Normal}(40, 5)                                                  \\
+    \beta                       & \sim \text{Normal}(0, 5)                                                   \\
+    \sigma                      & \sim \text{Half-}t(3, 0, 5)
+  \end{aligned}
+$$
+where $x_{\texttt{trt}[i]}$ for $\texttt{trt}[i]\in\{0,1,2,3\}$ denotes the treatment design vector corresponding to participants $i$'s assigned treatment.
+
+The primary quantity of interest is the difference in FACIT-Fatigue at 12-weeks for each active treatment group relative to the control group, that is,
+$$
+  \Delta_j = \mu_{j,3} - \mu_{0,3},\quad j=1,2,3.
+$$
+Another quantity of interest is the relative effectiveness of each active treatment compared to each other active treatment.
+$$
+  \delta_j = \mu_{j,3} - \max_{j^\prime\ne j} \mu_{j^\prime,t},\quad j=1,2,3.
+$$
+We quantify their probability under the assumed model according to
+$$
+  \begin{aligned}
+    \omega_j & = \text{Pr}(\Delta_j > 0 | \text{data}) \\
+    \pi_j    & = \text{Pr}(\delta_j > 0|\text{data})
+  \end{aligned}
+$$
+such that $\omega_j$ is the posterior probability that treatment $j$ is effective, and $\pi_j$ is the posterior probability that treatment $j$ is best amongst the active treatments.
+
+\subsection*{Interim Analyses}
+
+Interim analyses are scheduled to occur when 100, 200, 300 and 400 participants reach their primary endpoint. At each interim analysis, we pre-specify a number of decision rules in terms of the previously defined quantities. These decision rules may be to drop specific treatment arms, or to stop the trial altogether. We denote by $J^\prime$ the number of available arms at the time of the interim analysis, including control. At the first interim analysis, $J^\prime=4$.
+
+\begin{itemize}
+  \item \textit{Effective}: if $\omega_j > \epsilon_0$, then treatment $j$ has probability greater than $\epsilon_0$ of being effective compared to control.
+  \item \textit{Ineffective}: if $\omega_j < 1-\epsilon_1$ then treatment $j$ has probability greater than $\epsilon_1$ of being ineffective compared to control, and therefore may be dropped from the trial.
+  \item \textit{Superiority}: if $\pi_j > \epsilon_2$, then treatment $j$ has probability greater than $\epsilon_1$ of being the best active treatment, and therefore, all other active treatments may be dropped from the trial.
+  \item \textit{Inferiority}: if $\pi_j < \epsilon_2/(J^\prime-2)$, then treatment $j$ has probability less than $\epsilon_1/(J^\prime-2)$ of being the best active treatment, and therefore may be dropped from the trial.
+  \item \textit{Stopping}: the trial may be stopped early if one active treatment is superior and effective.
+\end{itemize}
+
+\subsection*{Response-Adaptive Randomisation}
+
+Initially, each treatment arm are allocated with equal-probability of $r_j=1/J^\prime$ where $J^\prime=4$. The probability of allocation to the control group is fixed throughout the trial to be equal to the reciprical of the number of arms still on study, $r_0 = 1/J^\prime$.
+
+For the remaining arms, the allocation may be zero if the arm has been dropped, or it may be proportional to the probability it is the best active treatment.
+
+Following each interim analysis, the allocation probability of the 3 active arms are updated according to
+$$
+  r_j = \begin{cases}
+    0                                   & \text{if the arm has been dropped} \\
+    \frac{\pi_j^k}{\sum_{j=1}^3\pi_j^k} & \text{otherwise}
+  \end{cases},\quad j=1,2,3.
+$$
+for some scaling factor $k$. If $k=0$, then $r_j = 1/J^\prime$ for each arm and if $k=1$ then $r_j = \pi_j$. The simulations used $k=0.5$.
+
+\subsection*{Simulations}
+
+The simulations presented here assume:
+\begin{itemize}
+  \item expected accrual of 3 participants per week according to homogeneous Poisson process.
+  \item interim analysis when 100, 200, 300, and 400 participants reach their primary endpoint.
+  \item treatment effect of 0, 0.5, or 1 standard deviation on 1, 2, or 3 arms.
+  \item 20\% drop-out, so that, for example when 100 participants reach their primary endpoint, 20 have missing 12-week FACIT-Fatigue data.
+  \item decision thresholds of $\epsilon_0=\epsilon_1=\epsilon_2=0.98$.
+  \item ignores repeated measures analysing 12-week FACIT-Fatigue as response in a linear model conditional on treatment group
+  \item uses variational approximation for model posterior.
+\end{itemize}
+
+\input{../outputs/tables/trial-oc-98.tex}
+
+% \addsec{Appendix II: Study Database and Derived Variables}\label{study-database}
 
 % The following sections summarise the relationship between the database variables and the variables outlined in the protocol and SAP.
 % Where required, the formula for calculating the outcome using the database labels is included.
