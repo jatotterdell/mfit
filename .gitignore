@@ -2,6 +2,9 @@
 *
 # Unignore all with extensions
 !*.*
+!DESCRIPTION
+!NAMESPACE
+
 # Unignore all dirs
 !*/
 
