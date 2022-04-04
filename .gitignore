@@ -2,11 +2,12 @@
 *
 # Unignore all with extensions
 !*.*
-!DESCRIPTION
-!NAMESPACE
 
 # Unignore all dirs
 !*/
+
+# mfittrial tracked in it's own remote
+mfittrial
 
 #+========================+
 # R files
