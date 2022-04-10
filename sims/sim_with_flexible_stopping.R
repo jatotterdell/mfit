@@ -6,20 +6,23 @@ library(parallel)
 library(bayestestR)
 library(optparse)
 
-option_list = list(
-  make_option(c("-c", "--cores"), type="integer", default=10,
-              help="number of cores to use", metavar="character"),
-  make_option(c("-n", "--nsim"), type="integer", default=10,
-              help="number of simulations to run under each configuration", metavar="character")
-);
-
+option_list <- list(
+  make_option(c("-c", "--cores"),
+    type = "integer", default = 10,
+    help = "number of cores to use", metavar = "character"
+  ),
+  make_option(c("-n", "--nsim"),
+    type = "integer", default = 10,
+    help = "number of simulations to run under each configuration", metavar = "character"
+  )
+)
 # get command line options, if help option encountered print help and exit,
 # otherwise if options not found on command line then set defaults,
 # To run call, e.g.: Rscript null.R -c 15 -n 2000
 opt <- parse_args(OptionParser(option_list = option_list))
 
 num_cores <- opt$cores
-num_sims  <- opt$nsim
+num_sims <- opt$nsim
 
 RNGkind("L'Ecuyer-CMRG")
 
@@ -58,8 +61,7 @@ run_row <- seq_len(nrow(cfg))
 
 # ----- Loop over configurations and save results -----
 
-for(z in run_row) {
-
+for (z in run_row) {
   start_time <- Sys.time()
 
   res <- mclapply(1:cfg[z][["sims"]], function(j) {
@@ -76,14 +78,19 @@ for(z in run_row) {
       brar = cfg[z][["brar"]],
       allow_stopping = cfg[z][["allow_stopping"]],
       prior = unlist(cfg[z][["prior"]]),
-      ctr = cfg[z][["ctr"]][[1]])
+      ctr = cfg[z][["ctr"]][[1]]
+    )
   }, mc.cores = num_cores)
   resl <- rbindlist(res, idcol = "trial")
   resl[, analysis := as.numeric(analysis)]
 
   end_time <- Sys.time()
 
-  saveRDS(list(cfg = cfg[z], res = resl, runtime = end_time - start_time),
-          paste0("~/out_files/mfit_sims/with_flex_control_stopping_trt_",
-                 formatC(z, width = 2, flag = "0"), ".rds"))
+  saveRDS(
+    list(cfg = cfg[z], res = resl, runtime = end_time - start_time),
+    paste0(
+      "~/out_files/mfit_sims/with_flex_control_stopping_trt_",
+      formatC(z, width = 2, flag = "0"), ".rds"
+    )
+  )
 }
