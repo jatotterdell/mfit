@@ -5,14 +5,13 @@ author: "James Totterdell"
 date: "`r Sys.Date()`"
 output: 
   bookdown::pdf_document2:
-    extra_dependencies: ["flafter", "fontspec"]
-    latex_engine: xelatex
+    extra_dependencies: ["flafter"]
+    latex_engine: pdflatex
     dev: cairo_pdf
 header-includes:
    - \usepackage{setspace}
    - \onehalfspacing
-monofont: Inconsolata
-romanfont: Linux Libertine
+   - \usepackage{newpxtext,newpxmath}
 ---
 
 ```{r setup, include=FALSE}
@@ -35,7 +34,7 @@ library(ggplot2)
 library(kableExtra)
 
 theme_set(
-  theme_bw(base_size = 10, base_family = "Linux Libertine") +
+  theme_bw(base_size = 10, base_family = "Palatino") +
     theme(
       legend.position = "top",
       legend.title.align = 0.5,
@@ -188,27 +187,29 @@ Following each interim analysis, the allocation probability of the 3 active arms
 $$
 r_j = \begin{cases}
 0 & \text{if the arm has been dropped} \\
-\frac{\pi_j^k}{\sum_{j=1}^3\pi_j^k} & \text{otherwise}
+\frac{(\pi_j/n_j)^k}{\sum_{j=1}^3(\pi_j/n_j)^k} & \text{otherwise}
 \end{cases},\quad j=1,2,3.
 $$
 for some scaling factor $k$.
 
-Note that if $k=0$, then $r_j = 1/J^\prime$ for each arm and if $k=1$ then $r_j = \pi_j$.
+Note that if $k=0$, then $r_j = 1/J^\prime$ for each arm and if $k=1$ then $r_j = \pi_j$ (assuming equal sample sizes allocated).
 
-This achieves two arms: more participants are expected to receive the best active intervention, and increased power of the best active intervention versus control.
+This achieves two arms: more participants are expected to receive the best active intervention, and increased information for the best active intervention.
 
 ```{r, fig.cap="Scaling of probability best for use in RAR. Note small values are upweighted more as $k$ decreases towards 0."}
 f <- function(p, k = 1) p^k
 par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Linux Libertine")
 curve(f, 0, 1, xlab = expression(pi[j]), ylab = expression(pi[j]^k))
 curve(f(x, k = 0.75), 0, 1, add = T, col = 2)
-curve(f(x, k = 0.50), 0, 1, add = T, col = 3)
-curve(f(x, k = 0.25), 0, 1, add = T, col = 4)
+curve(f(x, k = 0.66), 0, 1, add = T, col = 3)
+curve(f(x, k = 0.50), 0, 1, add = T, col = 4)
+curve(f(x, k = 0.33), 0, 1, add = T, col = 5)
+curve(f(x, k = 0.25), 0, 1, add = T, col = 6)
 legend("bottomright",
-  legend = c("1.00", "0.75", "0.50", "0.25"),
+  legend = c("1.00", "0.75", "0.66", "0.50", "0.33", "0.25"),
   bty = "n",
-  lty = 1, col = 1:4,
-  title = "scale, k"
+  lty = 1, col = 1:6,
+  title = "BRAR scale, k"
 )
 ```
 
@@ -218,7 +219,7 @@ legend("bottomright",
 
 The simulations presented here assume:
 
-- expected accrual of 3 participants per week according to homogeneous Poisson process.
+- expected accrual of 3 participants per week according to homogeneous Poisson process, so at each interim expect $\approx$ 36 enrolled but without follow-up.
 - interim analysis when 100, 200, 300, and 400 participants reach their primary endpoint.
 - 20% drop-out, so that, for example when 100 participants reach their primary endpoint, 20 have missing 12-week FACIT-Fatigue data.
 - decision thresholds of $\epsilon_0=\epsilon_1=\epsilon_2\in\{0.975,0.98,0.99\}$.
@@ -226,7 +227,7 @@ The simulations presented here assume:
 
 
 ```{r}
-sim_files <- grep("with_control_stopping_trt", list.files(res_dir), value = T)
+sim_files <- grep("with_control_stopping_trt_[0-9]+", list.files(res_dir), value = T)
 res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
 sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
 sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
@@ -246,7 +247,13 @@ sim_final <- sim_final[sim_config[, .(config, eff_eps, sup_eps, Effect, Number)]
 
 ```{r, include = FALSE}
 # stopped early
-sim_final[eff_eps == 0.98, .(N = sum(n_enr)), keyby = .(config, Effect, Number, trial)][, mean(N < 320), keyby = .(config, Effect, Number)]
+sim_final[
+  eff_eps == 0.98, .(N = sum(n_enr)),
+  keyby = .(config, Effect, Number, trial)
+][,
+  mean(N < 320),
+  keyby = .(config, Effect, Number)
+]
 ```
 
 
@@ -273,20 +280,22 @@ kabtab <- kable(oc_summary,
 ) %>%
   kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
   collapse_rows(1:2, latex_hline = "major", valign = "top")
-
-writeLines(kabtab, con = file.path("outputs", "tables", "trial-oc-98.tex"))
+kabtab
+# writeLines(kabtab, con = file.path("outputs", "tables", "trial-oc-98.tex"))
 ```
 
 
-```{r dist-sample-size, fig.cap = "Distribution of number of participants allocated to each treatment by effect size and number of affected treatments."}
+```{r dist-sample-size, fig.cap = "Distribution of number of participants allocated to each treatment by effect size and number of affected treatments.", fig.width=5, fig.height=4}
 ggplot(
   sim_final[, .(config, Effect, Number, n_enr, variable)],
   aes(variable, n_enr)
 ) +
   facet_grid(Effect ~ Number) +
-  geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  # geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  geom_violin(scale = "width", adjust = 1) +
   labs(x = "Treatment arm", y = "Number allocated") +
-  scale_x_discrete(labels = 0:3)
+  scale_x_discrete(labels = 0:3) +
+  scale_y_continuous(breaks = seq(25, 150, 25))
 ```
 
 \clearpage
@@ -340,6 +349,68 @@ kable(oc_summary,
   kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
   collapse_rows(1:2, latex_hline = "major", valign = "top")
 ```
+
+\clearpage 
+
+## Stricter RAR
+
+```{r}
+sim_files <- grep("with_control_stopping_trt_brar_k_025_[0-9]+", list.files(res_dir), value = T)[1:7]
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_config[, Effect := c("0", rep(c("1SD", "0.5SD"), times = 3))]
+sim_config[, Number := c(0, 1, 1, 2, 2, 3, 3)]
+```
+
+```{r}
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config[, .(config, eff_eps, sup_eps, Effect, Number)], on = "config"]
+```
+
+```{r oc-summary-brar-k-025}
+oc_summary <- sim_final[eff_eps == 0.98,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Inferior = sprintf("%.2f", mean(i_infr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = .(Effect, Number, Treatment = variable)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kabtab <- kable(oc_summary,
+  format = "latex",
+  align = "lllrrrr",
+  booktabs = TRUE,
+  caption = "Summary of trial operating characteristics, n = 10,000 simulations, $\\epsilon_0=\\epsilon_1=\\epsilon_2=0.98$, BRAR scale factor $k=0.25$."
+) %>%
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>%
+  collapse_rows(1:2, latex_hline = "major", valign = "top")
+kabtab
+```
+
+
+```{r dist-sample-size-brar-k-025, fig.cap = "Distribution of number of participants allocated to each treatment by effect size and number of affected treatments.", fig.width=5, fig.height=4}
+ggplot(
+  sim_final[, .(config, Effect, Number, n_enr, variable)],
+  aes(variable, n_enr)
+) +
+  facet_grid(Effect ~ Number) +
+  # geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  geom_violin(scale = "width", adjust = 1) +
+  labs(x = "Treatment arm", y = "Number allocated") +
+  scale_x_discrete(labels = 0:3) +
+  scale_y_continuous(breaks = seq(25, 150, 25))
+```
+
 
 \clearpage
 
@@ -402,9 +473,11 @@ ggplot(
   aes(variable, n_enr)
 ) +
   facet_grid(Effect ~ Number) +
-  geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  # geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  geom_violin(scale = "width", adjust = 1) +
   labs(x = "Treatment arm", y = "Number allocated") +
-  scale_x_discrete(labels = 0:3)
+  scale_x_discrete(labels = 0:3) +
+  scale_y_continuous(breaks = seq(25, 150, 25))
 ```
 
 
