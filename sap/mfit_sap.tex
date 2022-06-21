@@ -112,7 +112,7 @@ This statistical analysis plan (SAP) outline the data and procedures for analysi
 The following documents were reviewed when preparing this SAP:
 
 \begin{itemize}\tightlist
-  \item M-FIT Study Protocol version 0.9.7, 2 September 2021
+  \item M-FIT Study Protocol version 1.1, 10 November 2021
   \item M-FIT Data Dictionary, 19 October 2021 (REDCap extract date)
 \end{itemize}
 
@@ -579,19 +579,25 @@ Participants are asked to complete a pre and post exercise survey. For each inte
 
 \subsubsection{Intention-to-treat Analyses}
 
-The primary analysis will include all participants randomised to an intervention arm regardless of whether intercurrent events disrupted the allocated exercise regime and irrespective of adherence. That is, we will adopt an intention-to-treat (ITT) estimand (de facto treatment-policy) for the analyses with all randomised participants contributing to the analysis such that:
+The primary analysis will include all participants randomised to an intervention arm regardless of whether intercurrent events disrupted the allocated exercise regime and irrespective of adherence. That is, we will adopt an intention-to-treat (ITT) approach (de facto treatment-policy estimand) for the analyses with all randomised participants contributing to the analysis such that:
 
 \begin{itemize}
   \tightlist
   \item patients are analysed in the group they were allocated to
-  \item patients that do not receive (either partially or fully) the intervention will be retained
+  \item patients that do not receive or adhere (either partially or fully) to the intervention will be retained
   \item protocol deviations will not result in automatic exclusion
   \item patients who die before end of the study  will be included in the analysis population until their time of death
 \end{itemize}
 
+All observed data for a participant will be included in the analysis, including any data collected after withdrawal from or non-adherence to the assigned intervention.
+
 \subsubsection{Per-Protocol Analyses}
 
-Secondary analyses will investigate per-protocol effects where a participants adherence is taken into consideration. These analyses will use the information collected in the post-exercise questionnaire on self-reported adherence on whether exercise was completed on that day.
+Secondary analyses will investigate per-protocol (de jure) effects if all participants had satisfactorily adhered to the interventions without withdrawal. These analyses will use the information collected in the post-exercise questionnaire on self-reported adherence on whether exercise was completed on that day.
+
+A participant will be considered to have sufficiently adhered to the intervention if they complete at least x\% of exercise sessions.
+
+Only follow-up data collected whilst a participant was determind to be sufficiently adherent to the intervention will be included in the analysis.
 
 \textbf{
   Assuming that this will be of interest:
@@ -625,7 +631,7 @@ The final analysis will occur at the maximum sample size (or lower if early stop
 
 The pre-specified primary model  be a multivariate linear Normal model assuming an unstructured mean model for the outcomes at each visit occasion and treatment, and specifying an unstructued covariance matrix shared by all treatment groups.
 
-Denote by $j\in\{0,1,2,3, 4\}$ the visit occasion (0, 4, 8, 12, or 36 weeks), and by $k\in\{0,1,2,3\}$ the treatment assigned to participant $i$ and encoded by $x_i$. Denote by $y_{ij}$ the FACIT-Fatigue score for participant $i$ at visit $j$. Then, for $i=1,...,n$ and $j=0,1,2,3,4$,
+Denote by $j\in\{0,1,2,3, 4\}$ the visit occasion (0, 4, 8, 12, or 36 weeks), and by $k(i)\in\{0,1,2,3\}$ the treatment assigned to participant $i$. Denote by $y_{ij}$ the FACIT-Fatigue score for participant $i$ at visit $j$. Then, for $i=1,...,n$ and $j=0,1,2,3,4$,
 $$
   \begin{aligned}
     \mu_{ij}|\alpha,\beta,\xi & = \alpha + (\beta_j + x_{k(i)}^\mathsf{T}\xi_{j})1_{j>0} \\
@@ -638,7 +644,7 @@ $$
     \Sigma & = \text{diag}(\sigma)\Omega\text{diag}(\sigma)
   \end{aligned}
 $$
-and $x_{k(i)}$ is the $1\times 3$ intervention design vector (orthonormal) for participant $i$ who was assigned to intervention $k(i)$. Similarly, let $\mu_{kj}$ be the expected FACIT-Fatigue score at visit $j$ under treatment $k$.
+and $x_{k(i)}$ is the $3\times 1$ intervention design vector (orthonormal) for participant $i$ who was assigned to intervention $k(i)$. Similarly, let $\mu_{kj}$ be the expected FACIT-Fatigue score at visit $j$ under treatment $k$.
 
 The model parameters are:
 \begin{itemize}
@@ -653,7 +659,7 @@ A landmark analysis at visit $j=3$ informs the primary comparison between treatm
 For priors, we specify
 $$
   \begin{aligned}
-    \sigma_j & \sim \text{Student-t}(3, 0, 5^2),\quad j=1,2,3,4                    \\
+    \sigma_j & \sim \text{Student-t}^+(3, 0, 5^2),\quad j=1,2,3,4                  \\
     \Omega   & \sim \text{LKJ}(2)                                                  \\
     \alpha   & \sim \text{Normal}\left(\text{med}(y), \text{mad}(y)^2\right)       \\
     \beta_j  & \sim \text{Normal}\left(0, 5^2\right),\quad j=1,2,3,4               \\
@@ -706,7 +712,9 @@ Secondary analysis of the primary outcome will report on item specific summaries
 
 The secondary outcomes are a mix of continuous, discrete and categorical variables, some collected at multiple timepoints over the duration of the study. In general, the analysis of the secondary outcomes will use mixed models which will be specified to adjust for baseline outcome, study arm, measurement occasion, and their interaction with measurement occasion, and correlation between measures on the same participant. For binary outcomes these regression models will be logistic and for ordinal outcomes cumulative logistic assuming proportional odds. Continuous outcomes may be analysed analogously as the primary outcome, or by linear mixed model.
 
-The following provides brief specifications for the analyses of each of the secondary outcomes. The secondary outcomes are divided into groups cosnsitent with their previous introduction in \ref{secondary-outcomes}:
+The following provides brief specifications for the analyses of each of the secondary outcomes. For all secondary outcomes, the time-point of primary interest is considered to be 12 weeks after randomisation. However, due to the available repeated measures and potential for missing data, repeated measures models are specified to estimate the intervention differences at 12 weeks under MAR.
+
+The secondary outcomes are divided into groups cosnsitent with their previous introduction in \ref{secondary-outcomes}:
 
 \begin{itemize}
   \tightlist
@@ -727,12 +735,30 @@ There are two aims for the analysis on SONG-HD Fatigue:
 \begin{enumerate}
   \tightlist
   \item compare fatigue at 4, 8, 12 and 36 weeks by intervention.
-  \item validation of the SONG-HD Fatigue score (WHAT METHODS ARE PROPOSED FOR THIS?)
+  \item validation of the SONG-HD Fatigue score
 \end{enumerate}
 
-We will analyse the SONG-HD-F score using an ordinal mixed effects model. The model will include baseline score as part of the response, and have fixed terms for visit,  the interaction between intervention and follow-up visit (forcing the baseline distribution to be shared across all treatment groups), and random intercepts for participant and site. Data from each available measurement occassion will be included for each participant.
+This SAP reports only on the planned comparison and not on validation of the instrument.
 
-If issues are encountered, the model may be simplified by ignoring the site specific effects or by analysing visit differences independently (i.e. ignoring the longitudinal measurements e.g. comparison of interventions at 12 weeks ignoring the other repeated measurements).
+The SONG-HD-F score will be analysed using a Bayesian ordinal mixed effects model. The model will include baseline score as part of the response, and have fixed terms for week of visit (linear),  the interaction between intervention and week of visit (forcing the baseline distribution to be shared across all treatment groups), random intercepts and slopes for participant, and random intercepts for site. Data from each available measurement occassion will be included for each participant.
+
+The default model is
+\begin{gather*}
+  Y_{ij} \sim \text{Categorical}(\pi(\mu_{ij})) \\
+  \text{logit}\left(\mathbb P(Y_{ij} \leq l)\right) = \kappa_{l} - \mu_{ij},\quad l=0,...,9 \\
+  \pi_{l}(\mu) = \text{expit}(\kappa_l-\mu)-\text{expit}(\kappa_{l-1}-\mu)\\
+  \mu_{ij} = \beta\texttt{week}_{ij} + (\texttt{week}_{ij}\times x_{k(i)})^\mathsf{T}\xi +
+  \gamma_{i0}+\gamma_{i1}\texttt{week}_{ij} \\
+  \pi(0)\sim \text{Dirichlet}(2/10,\cdots,2/10) \\
+  \beta\sim \text{Normal}(0, 2.5),
+  \quad \xi\sim \text{Normal}(0, 2.5),\quad
+  \gamma_i\sim \text{Normal}(0, \Sigma) \\
+  \Sigma= \text{diag}(\tau)\Omega{\mathsf{T}}\text{diag}(\tau),\quad
+  \tau \sim \text{Student-t}^+(3, 0, 2.5),\quad
+  \Omega \sim \text{LKJ}(1).
+\end{gather*}
+
+If issues are encountered, the model may be simplified by ignoring the site specific effects or the random slopes. If the assumption of linearity with respect to week of visit is inappropriate, then week may be transformed (e.g. sqrt(week)) or specified as a categorical term, or visit specific effects may be investigated independently. Similarly, if proportional odds assumptions is found inappropriate than non-proportional odds models may be investigated.
 
 \phantomsection
 \label{analysis:pfs}
@@ -756,17 +782,33 @@ Inference for intervention effect will be assessed by ordinal regression with fi
 \label{analysis:hads}
 \hyperref[outcome:hads]{\textbf{HADS}}
 
-The aim is to use HADS to compare mood at 4, 8, 12 and 36 weeks by study arm. Anxiety and depression scores will be analysed as separate but correlated responses. Each response will be analysed using ordinal regression (cumulative logistic with proportional odds) with fixed terms for visit, visit by intervention interaction (with no main effect for intervention forcing shared baseline across randomised groups), participant specific intercepts which are correlated across the outcomes, and site specific intercepts.
+The aim is to use HADS to compare the effect of interventions on mood over time. Anxiety and depression scores will be analysed as separate but correlated responses. The sample cumulative logits will be explored. Each response will be analysed using ordinal regression (cumulative logistic with proportional odds) with fixed terms for week of visit, week of visit by intervention interaction (with no main effect for intervention forcing shared baseline across randomised groups), participant specific intercepts and slopes which are correlated across the outcomes, and site specific intercepts.
 
-If issues are encountered, the model may be simplified by ignoring the site specific effects or by analysing visit differences independently (i.e. ignoring the longitudinal measurements e.g. comparison of interventions at 12 weeks ignoring the other repeated measurements).
+The default model is, for outcomes $m=1,2$ corresponding to the anxiety and depression score respectively
+\begin{gather*}
+  Y_{mij} \sim \text{Categorical}(\pi_m(\mu_{mij})) \\
+  \text{logit}\left(\mathbb P(Y_{mij} \leq l)\right) = \kappa_{ml} - \mu_{ij} \\
+  \pi_{ml}(\mu) = \text{expit}(\kappa_{ml}-\mu)-\text{expit}(\kappa_{m,l-1}-\mu) \\
+  \mu_{mij} = \beta_m\texttt{week}_{ij} + (\texttt{week}_{ij}\times x_{k(i)})^\mathsf{T}\xi_m +
+  \gamma_{mi0}+\gamma_{mi1}\texttt{week}_{ij} \\
+  \pi_m(0)\sim \text{Dirichlet}(2/22,\cdots,2/22) \\
+  \beta_m\sim \text{Normal}(0, 2.5),
+  \quad \xi_m\sim \text{Normal}(0, 2.5),\quad
+  \gamma_i\sim \text{Normal}(0, \Sigma) \\
+  \Sigma= \text{diag}(\tau)\Omega\text{diag}(\tau),\quad
+  \tau \sim \text{Student-t}^+(3, 0, 2.5),\quad
+  \Omega \sim \text{LKJ}(1).
+\end{gather*}
+
+If issues are encountered, the model may be simplified by ignoring the site specific effects or the random slopes. If the assumption of linearity with respect to week of visit is inappropriate, then visit may be transformed (e.g. sqrt(week)) or specified as a categorical term, or visit specific effects may be investigated independently. Similarly, if proportional odds assumptions is found inappropriate than non-proportional odds models may be investigated.
 
 \phantomsection
 \label{analysis:promis-aspra}
 \hyperref[outcome:promis-apsra]{\textbf{PROMIS-APSRA}}
 
-The aim is to use the PROMIS Scale to compare social participation at 4, 8, 12 and 36 weeks by intervention. The aggregated score will be analysed using ordinal regression (cumulative logistic with proportional odds)  with fixed terms for visit, visit by intervention interaction (with no main effect for intervention forcing shared baseline across randomised groups), and participant and site specific  intercepts.
+The aim is to use the PROMIS Scale to compare the effects of each intervention on social participation over time. The aggregated score will be analysed using ordinal regression (cumulative logistic with proportional odds)  with fixed terms for week of visit, week of visit by intervention interaction (with no main effect for intervention forcing shared baseline across randomised groups), participant specific intercepts and slopes, and site specific intercepts.
 
-If issues are encountered, the model may be simplified by ignoring the site specific effects or by analysing visit differences independently (i.e. ignoring the longitudinal measurements e.g. comparison of interventions at 12 weeks ignoring the other repeated measurements).
+If issues are encountered, the model may be simplified by ignoring the site specific effects or the random slopes. If the assumption of linearity with respect to week of visit is inappropriate, then visit may be transformed (e.g. sqrt(week)) or specified as a categorical term, or visit specific effects may be investigated independently. Similarly, if proportional odds assumptions is found inappropriate than non-proportional odds models may be investigated.
 
 \phantomsection
 \label{analysis:msus}
@@ -797,9 +839,7 @@ The analyses...
 \label{analysis:6mwt}
 \hyperref[outcome:6mwt]{\textbf{Cardiorespiratory}}
 
-The aim is to use the six-minute walk test (metres) to compare cardiorespiratory fitness at 12 and 36 weeks by intervention.
-
-We will analyse distance covered during the six-minute walk test using log-normal mixed effect model for distance covered with fixed terms for treatment, visit, random intercept for participant repeat measures and random intercept for site.
+The aim is to use the six-minute walk test (metres) to compare cardiorespiratory fitness at 12 and 36 weeks by intervention. Distance covered during the six-minute walk test will be analysed using log-normal mixed effect model for distance covered with fixed terms for treatment, visit, random intercept for participant and random intercept for site.
 
 \phantomsection
 \label{analysis:poma}
@@ -876,6 +916,8 @@ Evaluation of the impact, fidelity, facilitators, and barriers of implementing t
 Dialysis patients are generally not lost to follow up due to the nature of their treatment protocols. Withdrawal of consent is also expected to be low in this population. However, adherence can be a problem and safety is an ongoing concern. Interim missingness might also occur if participants are on occassion unable or unwilling to complete the study questionnaires within the protocol timeframe. Such interim missingness could be differential between treatments groups. For example, if a particular exercise regimen does reduce fatigue, participants may be more willing to or capable of completing the requisite survey items compared to participants who are experiencing greater fatigue under a different intervention. This would which correspond with outcomes missing not at random (MNAR).
 
 The primary analysis will assume that outcomes are missing at random (MAR) given the specified covariates. Sensitivity anlayses will investigate the sensitivity of inferences under various MNAR assumptions using multiple imputation. This will include $\delta$-adjustment methods to assess robustness of effectiveness results whereby observations missing due to loss-to-follow-up will be assumed to have reduced FACIT-Fatigue scores by an amount $\delta$ relative to the assumed MAR response \cite{carpenter2012multiple}.
+
+As a sensitivity analysis for the treatment policy estimand, multiple imputation will be done within groups defined by randomised intervention and intervention adherence at 12 weeks (assuming sufficient data in these groups). The imputation model will be as defind for the primary outcome, however, the model will be fit separately for participants deemed to have adhered to week 12 and those who are deemed to have not adhered to week 12.
 
 \subsubsection{Baseline}
 
@@ -1117,7 +1159,7 @@ Communication of trial outcomes will not occur until after termination of recrui
 
 \clearpage
 
-\addsec{Appendix I: Trial Operating Characteristics}\label{trial-simulations}
+\addsec{Appendix I: Trial Sample Size and Operating Characteristics}\label{trial-simulations}
 
 \subsection*{Simulation Model}
 
