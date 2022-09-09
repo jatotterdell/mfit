@@ -6,9 +6,6 @@
 # Unignore all dirs
 !*/
 
-# mfittrial tracked in it's own remote
-mfittrial
-
 #+========================+
 # R files
 #+========================+
@@ -40,6 +37,10 @@ mfittrial
 # Directories
 #+========================+
 .vscode/
+# mfittrial tracked in it's own remote
+mfittrial 
+# trial word docs
+docs
 
 
 #+========================+
