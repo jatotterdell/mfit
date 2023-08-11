@@ -1,0 +1,994 @@
+---
+title: MFIT Trial Design
+subtitle: Trial Sample Size and Operating Characteristics
+author: James Totterdell
+date: "`r Sys.Date()`"
+pdf-engine: pdflatex
+format:
+  pdf:
+    documentclass: scrartcl
+    papersize: letter
+    toc: true
+    number-sections: true
+    colorlinks: true
+    include-in-header: 
+      text: |
+        \usepackage[scaled=.95]{gentium}
+        \usepackage{textcomp}
+        \usepackage[T1]{fontenc}
+        \usepackage{cabin}
+        \usepackage[varqu,varl]{inconsolata}
+        \usepackage{amsmath,amsthm}
+        \usepackage[libertine,bigdelims,vvarbb]{newtxmath}
+        \usepackage[cal=boondoxo]{mathalfa}
+---
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.height = 3,
+  fig.width = 4
+)
+
+knitr::opts_knit$set(
+    root.dir = ".."
+)
+
+res_dir <- "~/out_files/mfit_sims/"
+```
+
+```{r pkgs}
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(stringr)
+library(kableExtra)
+library(mfittrial)
+
+theme_set(
+  theme_bw(base_size = 10, base_family = "Palatino") +
+    theme(
+      legend.position = "top",
+      legend.title.align = 0.5,
+      legend.key.height = unit(0.5, "line")
+    )
+)
+```
+
+# Introduction
+
+M-FIT is a 4-arm parallel trial evaluating the effect of structured exercise interventions on fatigue as measured by FACIT-Fatigue.
+
+# Primary Outcome
+
+FACIT-Fatigue is a 13-item 5-point (0 to 4) Likert scale with an aggregate score ranging from 0 to 52.
+Higher scores imply less fatigue.
+
+The distribution of FACIT-Fatigue scores is skewed with a long tail towards lower scores.
+
+::: {#fig-facit-fatigue-dist}
+![](facit-fatigue-example-dist.pdf){width=80%}
+
+Example distribution of FACIT-Fatigue scores, (taken from Jhamb M, Abdel-Kader K, Yabes J, Wang Y, Weisbord SD, Unruh M, Steel JL. Comparison of Fatigue, Pain, and Depression in Patients With Advanced Kidney Disease and Cancer-Symptom Burden and Clusters. J Pain Symptom Manage. 2019 Mar;57(3):566-575.e3. doi: 10.1016/j.jpainsymman.2018.12.006. Epub 2018 Dec 13. PMID: 30552961; PMCID: PMC6382584).
+:::
+
+The outcome is ordinal, so a ordinal longitudinal model would be ideal.
+However, given the interest in mean FACIT-Fatigue amongst the groups, for simplicity a normal linear model will be specified for the primary outcome.
+
+# Fixed-Sample Size Power
+
+```{r}
+#| label: fixed-ss-power
+drop_out <- seq(1, 0.8, -0.05)
+max_n <- 100
+effect_size <- seq(0, 1, 0.005)
+power <- sapply(drop_out, function(d) {
+  power.t.test(
+    n = max_n * d,
+    delta = effect_size,
+    sig.level = 0.025,
+    alternative = "one.sided"
+  )$power
+})
+```
+
+Ignoring repeated measures, a sample size of 100 participants per arm, assuming drop-out of 20%, would provide power 0.8 for an effect size of $\Delta = \mu_1-\mu_0 = `r effect_size[which(power[, 5] >= 0.8)[1]]`\sigma$.
+For example, assuming that FACIT-Fatigue scores are distributed with standard deviation of 5, then the sample size would have power 0.8 for an increase of 2.25 in group means from control to active treatment.
+
+```{r}
+#| label: fig-fixed-ss-power
+#| fig-cap: Fixed sample size power for two sample $t$-test of size $\alpha=0.025$ with $n=100$ per arm, assuming varying drop-out and effect size, $\delta$, relative to the standard deviation $\sigma$.
+par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Palatino")
+matplot(effect_size, power,
+  type = "l", col = seq_along(drop_out), lty = 1,
+  xlab = expression("Effect size, " ~ delta * ", where" ~ mu[1] - mu[0] ~ "=" ~ delta * sigma),
+  ylab = "Power"
+)
+segments(
+  x0 = 0,
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = power[min(which(power[, 5] >= 0.8)), 5],
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+segments(
+  x0 = effect_size[min(which(power[, 5] >= 0.8))],
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = 0,
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+legend("bottomright",
+  legend = formatC(100 * (1 - drop_out), width = 2),
+  lty = 1,
+  xjust = 1,
+  col = seq_along(drop_out),
+  cex = 1,
+  bty = "n",
+  title = "Drop-out, %"
+)
+```
+
+\clearpage
+
+# Group-Sequential Design
+
+## Setup
+
+The study consists of four arms: one control group and three active interventions.
+Accrual is assumed to be on average 3 participants per week up to a maximum of 400 participants.
+
+Denote the treatment group means at each time-point by $\mu_{jt},\ j=0,1,2,3$ for $t=0,1,2,3$ corresponding to baseline, 4, 8, and 12 weeks after randomisation.
+The primary endpoint is at 12-weeks after randomisation.
+
+The primary quantity of interest is the difference in FACIT-Fatigue at 12-weeks for each active treatment group relative to the control group, that is,
+$$
+\Delta_j = \mu_{j,3} - \mu_{0,3},\quad j=1,2,3.
+$$
+Another quantity of interest is the relative effectiveness of each active treatment compared to all the other active treatments.
+$$
+\delta_j = \mu_{j,3} - \max_{j^\prime\ne j} \mu_{j^\prime,t},\quad j=1,2,3.
+$$
+and the final quantities of interest are the pairwise comparisons between the active interventions
+$$
+\zeta_{jkl} = \mu_{jk} - \mu_{jl}, \quad j=1,2,3, \quad k,l\in\{1,2,3\},
+$$
+in particular, the comparison of the active interventions against the intervention with the highest mean 12-week FACIT-Fatigue scores.
+
+We define an active treatment to be superior if mean FACIT-Fatigue is highest (amongst all active treatments) under that treatment, that is, $\delta_j > 0$, we define an active treatment to be effective, if it has higher mean FACIT-Fatigue compared to control, $\Delta_j>0$, and ineffective if it has lower mean FACT-Fatigue compared to control, $\Delta_j < 0$.
+
+The probability of these statements are quantified under the assumed model according to
+$$
+\begin{aligned}
+\omega_j &= \text{Pr}(\Delta_j > 0 | \text{data}) \\
+\pi_j &= \text{Pr}(\delta_j > 0|\text{data})
+\end{aligned}
+$$
+such that $\omega_j$ is the posterior probability that treatment $j$ is effective, and $\pi_j$ is the posterior probability that treatment $j$ is superior amongst the active treatments.
+
+\clearpage
+
+## Model
+
+The FACIT-Fatigue outcomes will be analysed assuming a multivariate normal model for the ordinal outcome.
+The simulation model focuses only on the 12-week scores.
+
+The simulation model assumes
+$$
+\begin{aligned}
+y_{i,3}|\alpha,\beta,\sigma &\sim \text{Normal}(\alpha + x_{\texttt{trt}[i]}^\mathsf{T}\beta, \sigma^2) \\
+\mu_{j,3} &= \alpha + x_j^\mathsf{T}\beta \\
+\alpha &\sim \text{Normal}(40, 5) \\
+\beta &\sim \text{Normal}(0, 5) \\
+\sigma &\sim \text{Half-}t(3, 0, 5)
+\end{aligned}
+$$
+where $x_{\texttt{trt}[i]}$ for $\texttt{trt}[i]\in\{0,1,2,3\}$ denotes the treatment design vector corresponding to participants $i$'s assigned treatment.
+
+## Interim Analyses
+
+- drop if ineffective
+- drop if effective and superior?
+- update RAR with bounds (min of 0.1 or 0.15)
+
+\clearpage
+
+# Example Trials
+
+In what follows, some example trials are presented to show what the results may look like.
+In these examples, the average FACIT-Fatigue score under each treatment varies while the standard deviation of FACIT-Fatigue scores is assumed constant across all treatments at $\sigma=10$. Drop-out is assumed to be 80% independent of treatment; the number enrolled excludes drop-outs.
+
+```{r}
+#| label: example-functions
+plot_accrual <- function(dat, i = 1) {
+
+    tmp <- dat[analysis == i, .(variable, n_enr, n_obs)]
+    tmp[, Treatment := str_replace(variable, "trt", "")] 
+    ggplot(tmp, aes(Treatment, n_enr)) +
+        geom_bar(stat = "identity", alpha = 0.5) +
+        geom_bar(aes(y = n_obs), stat = "identity") +
+        geom_text(aes(label = n_enr, y = n_enr + 10), size = 2.5, family = "Palatino") +
+        labs(y = "Number enrolled\n(observed outcomes)") +
+        ylim(0, 200) +
+        theme(legend.position = "none")  
+}
+
+plot_treat_means <- function(dat, i = 1) {
+    tmp <- dat[analysis == i]
+    tmp[, `:=`(
+        Treatment = str_replace(variable, "trt", ""),
+        Decision =  fcase(
+            is.na(i_eff), "",
+            i_eff == 1, "Effective",
+            i_inf == 1, "Harmful",
+            default = "None")
+    )]
+    ggplot(tmp, aes(Treatment, trt_mean)) +
+        geom_point(size = 1) +
+        geom_errorbar(aes(
+            ymin = trt_mean - 1.96*sqrt(trt_var), 
+            ymax = trt_mean + 1.96*sqrt(trt_var)), 
+            width = 0.1) +
+        annotate(geom = "text", y=56, x=0, label = "Pr(effective)", size = 2.25, fontface = "bold", family = "Palatino") +
+        annotate(geom = "text", y=60, x=0, label = "Pr(superior)", size = 2.25, fontface = "bold", family = "Palatino") +
+        annotate(geom = "text", y = 52, x = 0, label = "Decision", size = 2.25, fontface = "bold", family = "Palatino") +
+        geom_text(aes(label = ifelse(is.na(p_eff), "", sprintf("%.2f", p_eff)), y = 56), size = 2.25) +
+        geom_text(aes(label = ifelse(is.na(p_supr), "", sprintf("%.2f", p_supr)), y = 60), size = 2.25) +
+        geom_text(aes(label = Decision, y = 52, colour = Decision), size = 2.25) +
+        geom_text(aes(label = sprintf("%2.1f", trt_mean), x = Treatment, y = trt_mean + 4*sqrt(trt_var)), size = 2.25) +
+        labs(y = "Model treatment\nmeans") +
+        scale_colour_manual(values = c(
+            "None" = 1, 
+            "Inferior" = "red", 
+            "Harmful" = "red",
+            "Inf+Hrm" = "red",
+            "Superior" = "blue",
+            "Effective" = "green",
+            "Sup+Eff" = "purple")) +
+        coord_cartesian(ylim = c(30, 60), xlim = c(0, 4)) +
+        theme(legend.position = "none")
+}
+```
+
+```{r}
+#| label: fig-example-0
+#| fig-cap: Example 0 - No effect
+#| fig-height: 5.5
+#| fig-width: 6
+dropout <- 0.8
+nseq <- c(200, 300, 400) * dropout
+k <- 0.5
+
+set.seed(8124)
+dat1 <- simulate_continuous_outcome(
+  nsubj = max(nseq), means = c(40, 40, 40, 40), sigma = 10, trunc = TRUE)
+res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
+(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2)) / 
+(plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
+```
+
+```{r}
+#| label: fig-example-1
+#| fig-cap: Example 1 - Effective
+#| fig-height: 5.5
+#| fig-width: 6
+dropout <- 0.8
+nseq <- c(200, 300, 400) * dropout
+k <- 0.5
+
+set.seed(123)
+dat1 <- simulate_continuous_outcome(
+  nsubj = max(nseq), means = c(40, 45, 43, 43), sigma = 10, trunc = TRUE)
+res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
+(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2)) / 
+(plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
+```
+
+```{r}
+#| label: fig-example-2
+#| fig-cap: Example 2 - Harmful
+#| fig-height: 5.5
+#| fig-width: 6
+dropout <- 0.8
+nseq <- c(200, 300, 400) * dropout
+k <- 0.5
+
+set.seed(7135)
+dat1 <- simulate_continuous_outcome(
+  nsubj = max(nseq), means = c(40, 30, 30, 30), sigma = 10, trunc = TRUE)
+res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
+(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2))
+```
+
+\clearpage
+
+# Group-sequential Operating Characteristics
+
+```{r}
+#| label: load-sim-data
+sim_files <- grep("bounded_rar_[0-9]+", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_result[, Treatment := as.integer(gsub("trt", "", variable))]
+sim_config[, `:=`(
+  Effect = sapply(means, function(x) (x[2] - x[1])) / sigma,
+  `True means` = sapply(means, function(x) paste(sprintf("%.1f", x), collapse = ", "))
+)]
+```
+
+```{r}
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config, on = "config"]
+sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by = 1:nrow(sim_final)]
+```
+
+## Keep Effective Treatments
+
+### $\epsilon = 0.98$
+
+```{r}
+#| label: tbl-oc-overall-098
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, no BRAR, $\epsilon = 0.98$.
+oc_summary <- sim_final[eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any effective` = any(p_eff > 0.98, na.rm = TRUE),
+    `All effective` = all(p_eff > 0.98, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, brar, brar_min, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:5)]
+oc_summary <- oc_summary[, 
+    lapply(.SD, mean), 
+    keyby = .(config, brar, brar_min, `True means`), .SDcols = outcols
+][order(`True means`)]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r}
+#| label: tbl-oc-summary-1-098
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR.
+oc_summary <- sim_final[brar == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.98)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-2-098
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR unbounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.98)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-3-098
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.98)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+### $\epsilon = 0.95$
+
+```{r}
+#| label: tbl-oc-overall-095
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, no BRAR, $\epsilon = 0.95$.
+oc_summary <- sim_final[eff_eps == 0.95 & trunc == FALSE,
+  .(
+    `Any effective` = any(p_eff > 0.95, na.rm = TRUE),
+    `All effective` = all(p_eff > 0.95, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, brar, brar_min, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:5)]
+oc_summary <- oc_summary[, 
+    lapply(.SD, mean), 
+    keyby = .(config, brar, brar_min, `True means`), .SDcols = outcols
+][order(`True means`)]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r}
+#| label: tbl-oc-summary-1-095
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR, $\\epsilon=0.95$.
+oc_summary <- sim_final[brar == 0 & eff_eps == 0.95 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.95)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.95)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-2-095
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR unbounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.95 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.95)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.95)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-3-095
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.95 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.95)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.95)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+\clearpage
+
+## Drop Effective Treatments
+
+```{r}
+#| label: load-sim-data-dropeff
+sim_files <- grep("bounded_rar2_[0-9]+", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_result[, Treatment := as.integer(gsub("trt", "", variable))]
+sim_config[, `:=`(
+  Effect = sapply(means, function(x) (x[2] - x[1])) / sigma,
+  `True means` = sapply(means, function(x) paste(sprintf("%.1f", x), collapse = ", "))
+)]
+
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config, on = "config"]
+sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by = 1:nrow(sim_final)]
+```
+
+### $\epsilon = 0.98$
+
+```{r}
+#| label: tbl-oc-overall-098-dropeff
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, no BRAR, $\epsilon = 0.98$.
+oc_summary <- sim_final[eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any effective` = any(i_eff == 1, na.rm = TRUE),
+    `All effective` = all(i_eff == 1, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, brar, brar_min, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:5)]
+oc_summary <- oc_summary[, 
+    lapply(.SD, mean), 
+    keyby = .(config, brar, brar_min, `True means`), .SDcols = outcols
+][order(`True means`)]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+\clearpage
+
+```{r}
+#| label: tbl-oc-summary-1-098-dropeff
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR.
+oc_summary <- sim_final[brar == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr == 1)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-2-098-dropeff
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR unbounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr == 1)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-3-098-dropeff
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr == 1)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+\clearpage
+
+## Keep Effective Treatment if Superior
+
+```{r}
+#| label: load-sim-data-keepsup
+sim_files <- grep("sim_final_nodrop_[0-9]+", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_result[, Treatment := as.integer(gsub("trt", "", variable))]
+sim_config[, `:=`(
+  Effect = sapply(means, function(x) (x[2] - x[1])) / sigma,
+  `True means` = sapply(means, function(x) paste(sprintf("%.1f", x), collapse = ", "))
+)]
+
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config, on = "config"]
+sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by = 1:nrow(sim_final)]
+```
+
+```{r}
+#| label: tbl-oc-overall-098-keepsup
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, $\epsilon = 0.98$.
+oc_summary <- sim_final[eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any superior and effective` = any(i_suprandeff == 1, na.rm = TRUE),
+    `Any superior` = any(p_supr > 0.97, na.rm = TRUE),
+    `Any effective` = any(p_eff > 0.97, na.rm = TRUE),
+    `All effective` = all(p_eff > 0.97, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, brar, brar_min, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:5)]
+oc_summary <- oc_summary[, 
+    lapply(.SD, mean), 
+    keyby = .(config, brar, brar_min, `True means`), .SDcols = outcols
+]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r}
+#| label: tbl-oc-summary-1-098-keepsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR.
+oc_summary <- sim_final[brar == 0 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.98)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-2-098-keepsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR unbounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr == 1)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-3-098-keepsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded 0.1.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.10 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_suprandeff == 1)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-4-098-keepsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded 0.15.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(p_supr > 0.98)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+\clearpage
+
+## Drop Effective Treatment if Superior
+
+```{r}
+#| label: load-sim-data-dropsup
+sim_files <- grep("sim_final_supdrop_[0-9]+", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_result[, Treatment := as.integer(gsub("trt", "", variable))]
+sim_config[, `:=`(
+  Effect = sapply(means, function(x) (x[2] - x[1])) / sigma,
+  `True means` = sapply(means, function(x) paste(sprintf("%.1f", x), collapse = ", "))
+)]
+
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config, on = "config"]
+sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by = 1:nrow(sim_final)]
+```
+
+```{r}
+#| label: tbl-oc-overall-098-dropsup
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, $\epsilon = 0.98$.
+oc_summary <- sim_final[eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any as superior and effective` = any(i_suprandeff == 1, na.rm = TRUE),
+    `Any superior at end` = any(p_supr > 0.98, na.rm = TRUE),
+    `Any effective at end` = any(p_eff > 0.98, na.rm = TRUE),
+    `All effective` = all(p_eff > 0.98, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, brar, brar_min, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:5)]
+oc_summary <- oc_summary[, 
+    lapply(.SD, mean), 
+    keyby = .(config, brar, brar_min, `True means`), .SDcols = outcols
+]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r}
+#| label: tbl-oc-summary-1-098-dropsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR.
+oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr == 1)),
+    `2nd best` = sprintf("%.2f", mean(i_2bestandeff == 1)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-2-098-dropsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR unbounded.
+oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr == 1)),
+    `2nd best` = sprintf("%.2f", mean(i_2bestandeff == 1)),
+    Effective = sprintf("%.2f", mean(i_eff == 1)),
+    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-3-098-dropsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded 0.1.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.10 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_suprandeff == 1)),
+    `2nd best` = sprintf("%.2f", mean(i_2bestandeff == 1)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```
+
+```{r}
+#| label: tbl-oc-summary-4-098-dropsup
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded 0.15.
+oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_suprandeff == 1)),
+    `2nd best` = sprintf("%.2f", mean(i_2bestandeff == 1)),
+    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+```

@@ -1,0 +1,634 @@
+---
+title: MFIT Trial Design
+subtitle: Trial Sample Size and Operating Characteristics
+author: James Totterdell
+date: "`r Sys.Date()`"
+pdf-engine: pdflatex
+format:
+  pdf:
+    documentclass: scrartcl
+    papersize: letter
+    toc: true
+    number-sections: true
+    colorlinks: true
+    include-in-header: 
+      text: |
+        \usepackage[scaled=.95]{gentium}
+        \usepackage{textcomp}
+        \usepackage[T1]{fontenc}
+        \usepackage{cabin}
+        \usepackage[varqu,varl]{inconsolata}
+        \usepackage{amsmath,amsthm}
+        \usepackage[libertine,bigdelims,vvarbb]{newtxmath}
+        \usepackage[cal=boondoxo]{mathalfa}
+---
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.height = 3,
+  fig.width = 4
+)
+
+knitr::opts_knit$set(
+    root.dir = ".."
+)
+
+res_dir <- "~/out_files/mfit_sims/"
+```
+
+```{r pkgs}
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(stringr)
+library(kableExtra)
+library(mfittrial)
+
+theme_set(
+  theme_bw(base_size = 10, base_family = "Palatino") +
+    theme(
+      legend.position = "top",
+      legend.title.align = 0.5,
+      legend.key.height = unit(0.5, "line")
+    )
+)
+```
+
+# Introduction
+
+M-FIT is a 4-arm parallel trial evaluating the effect of structured exercise interventions on fatigue as measured by FACIT-Fatigue.
+
+# Primary Outcome
+
+FACIT-Fatigue is a 13-item 5-point (0 to 4) Likert scale with an aggregate score ranging from 0 to 52.
+Higher scores imply less fatigue.
+
+The distribution of FACIT-Fatigue scores is skewed with a long tail towards lower scores.
+
+::: {#fig-facit-fatigue-dist}
+![](facit-fatigue-example-dist.pdf){width=80%}
+
+Example distribution of FACIT-Fatigue scores, (taken from Jhamb M, Abdel-Kader K, Yabes J, Wang Y, Weisbord SD, Unruh M, Steel JL. Comparison of Fatigue, Pain, and Depression in Patients With Advanced Kidney Disease and Cancer-Symptom Burden and Clusters. J Pain Symptom Manage. 2019 Mar;57(3):566-575.e3. doi: 10.1016/j.jpainsymman.2018.12.006. Epub 2018 Dec 13. PMID: 30552961; PMCID: PMC6382584).
+:::
+
+The outcome is ordinal, so a ordinal longitudinal model would be ideal.
+However, given the interest in mean FACIT-Fatigue amongst the groups, for simplicity a normal linear model will be specified for the primary outcome.
+
+# Fixed-Sample Size Power
+
+```{r}
+#| label: fixed-ss-power
+drop_out <- seq(1, 0.8, -0.05)
+max_n <- 100
+effect_size <- seq(0, 1, 0.005)
+power <- sapply(drop_out, function(d) {
+  power.t.test(
+    n = max_n * d,
+    delta = effect_size,
+    sig.level = 0.025,
+    alternative = "one.sided"
+  )$power
+})
+```
+
+Ignoring repeated measures, a sample size of 100 participants per arm, assuming drop-out of 20%, would provide power 0.8 for an effect size of $\Delta = \mu_1-\mu_0 = `r effect_size[which(power[, 5] >= 0.8)[1]]`\sigma$.
+For example, assuming that FACIT-Fatigue scores are distributed with standard deviation of 5, then the sample size would have power 0.8 for an increase of 2.25 in group means from control to active treatment.
+
+```{r}
+#| label: fig-fixed-ss-power
+#| fig-cap: Fixed sample size power for two sample $t$-test of size $\alpha=0.025$ with $n=100$ per arm, assuming varying drop-out and effect size, $\delta$, relative to the standard deviation $\sigma$.
+par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Palatino")
+matplot(effect_size, power,
+  type = "l", col = seq_along(drop_out), lty = 1,
+  xlab = expression("Effect size, " ~ delta * ", where" ~ mu[1] - mu[0] ~ "=" ~ delta * sigma),
+  ylab = "Power"
+)
+segments(
+  x0 = 0,
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = power[min(which(power[, 5] >= 0.8)), 5],
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+segments(
+  x0 = effect_size[min(which(power[, 5] >= 0.8))],
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = 0,
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+legend("bottomright",
+  legend = formatC(100 * (1 - drop_out), width = 2),
+  lty = 1,
+  xjust = 1,
+  col = seq_along(drop_out),
+  cex = 1,
+  bty = "n",
+  title = "Drop-out, %"
+)
+```
+
+\clearpage
+
+# Group-Sequential Design
+
+## Setup
+
+The study consists of four arms: one control group and three active interventions.
+Accrual is assumed to be on average 3 participants per week up to a maximum of 400 participants.
+
+Denote the treatment group means at each time-point by $\mu_{jt},\ j=0,1,2,3$ for $t=0,1,2,3$ corresponding to baseline, 4, 8, and 12 weeks after randomisation.
+The primary endpoint is at 12-weeks after randomisation.
+
+The primary quantity of interest is the difference in FACIT-Fatigue at 12-weeks for each active treatment group relative to the control group, that is,
+$$
+\Delta_j = \mu_{j,3} - \mu_{0,3},\quad j=1,2,3.
+$$
+Another quantity of interest is the relative effectiveness of each active treatment compared to the other active treatments.
+$$
+\delta_j = \mu_{j,3} - \max_{j^\prime\ne j} \mu_{j^\prime,t},\quad j=1,2,3.
+$$
+
+We define an active treatment to be best if mean FACIT-Fatigue is maximal (amongst all active treatments) under that treatment, that is, $\delta_j > 0$, and we define an active treatment to be effective, if it has higher mean FACIT-Fatigue compared to control, $\Delta_j>0$.
+
+The probability of statements are quantified under the assumed model according to
+$$
+\begin{aligned}
+\omega_j &= \text{Pr}(\Delta_j > 0 | \text{data}) \\
+\pi_j &= \text{Pr}(\delta_j > 0|\text{data})
+\end{aligned}
+$$
+such that $\omega_j$ is the posterior probability that treatment $j$ is effective, and $\pi_j$ is the posterior probability that treatment $j$ is best amongst the active treatments.
+
+\clearpage
+
+## Model
+
+The FACIT-Fatigue outcomes will be analysed assuming a multivariate normal model for the ordinal outcome.
+The simulation model focuses only on the 12-week scores.
+
+The simulation model assumes
+$$
+\begin{aligned}
+y_{i,3}|\alpha,\beta,\sigma &\sim \text{Normal}(\alpha + x_{\texttt{trt}[i]}^\mathsf{T}\beta, \sigma^2) \\
+\mu_{j,3} &= \alpha + x_j^\mathsf{T}\beta \\
+\alpha &\sim \text{Normal}(40, 5) \\
+\beta &\sim \text{Normal}(0, 5) \\
+\sigma &\sim \text{Half-}t(3, 0, 5)
+\end{aligned}
+$$
+where $x_{\texttt{trt}[i]}$ for $\texttt{trt}[i]\in\{0,1,2,3\}$ denotes the treatment design vector corresponding to participants $i$'s assigned treatment.
+
+## Interim Analyses
+
+A first interim analysis is planned to occur after 200 participants have completed 12-weeks of follow-up.
+An additional interim will occur after 300 participants have completed 12-weeks of follow-up and the final analysis at trial completion if it not stopped at one of the two planned interims.
+
+At each interim analysis, the active interventions will be compared with the attention control.
+If an active intervention is found to be inferior to attention control then it may be dropped.
+If an active intervention is found to be effective relative to attention control then it may be dropped to focus on the remaining interventions.
+
+Target allocations will be updated using RAR.
+
+Formally, the decision rules are:
+
+- **Effective**: if $\omega_j > \epsilon_0$  then treatment $j$ has probability greater than $\epsilon_0$ of being effective compared to control and that intervention may be dropped as effective to focus recruitment on the other interventions.
+- **Ineffective**: if $\omega_j < 1 - \epsilon_1$ then treatment $j$ has probability no more than $\epsilon_1$ of being effective compared to control and that intervention may be dropped as ineffective to focus recruitment on the other interventions.
+- **Stopping**: the trial may stop early of all active interventions have been identified as either effective or ineffective.
+
+Note that, once a treatment has been dropped, we do not allow it to come back into the trial.
+Therefore, once a treatment has been declared effective or ineffective, then that assertion is assumed to hold true for the remainder of the trial.
+An arm which has been dropped is excluded from calculations of $\pi_j$.
+
+Effectiveness may change throughout of the course of the trial, for example, an intervention may meet the threshold following the first analysis, but no longer does following the second analysis, etc.
+
+## Response-Adaptive Randomisation
+
+Initially, each treatment arm are allocated with equal-probability of $r_j=1/J^\prime$ where $J^\prime=4$.
+The probability of allocation to the control group is fixed throughout the trial to be equal to the reciprical of the number of arms still on study, $r_0 = 1/J^\prime$.
+
+For the remaining arms, the allocation may be zero if the arm has been dropped, or it may be proportional to the probability it is the best active treatment.
+
+Following each interim analysis, the allocation probability of the 3 active arms are updated according to
+$$
+r_j = \begin{cases}
+0 & \text{if the arm has been dropped} \\
+\frac{(\pi_j/n_j)^k}{\sum_{j=1}^3(\pi_j/n_j)^k} & \text{otherwise}
+\end{cases},\quad j=1,2,3.
+$$
+for some scaling factor $k$.
+
+Note that if $k=0$, then $r_j = 1/J^\prime$ for each arm and if $k=1$ then $r_j = \pi_j$ (assuming equal sample sizes allocated).
+
+The purpose is to increase information for the best active intervention.
+
+```{r, fig.cap="Scaling of probability best for use in RAR. Note small values are upweighted more as $k$ decreases towards 0."}
+f <- function(p, k = 1) p^k
+par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Palatino")
+curve(f, 0, 1, xlab = expression(pi[j]), ylab = expression(pi[j]^k))
+curve(f(x, k = 0.75), 0, 1, add = T, col = 2)
+curve(f(x, k = 0.66), 0, 1, add = T, col = 3)
+curve(f(x, k = 0.50), 0, 1, add = T, col = 4)
+curve(f(x, k = 0.33), 0, 1, add = T, col = 5)
+curve(f(x, k = 0.25), 0, 1, add = T, col = 6)
+legend("bottomright",
+  legend = c("1.00", "0.75", "0.66", "0.50", "0.33", "0.25"),
+  bty = "n",
+  lty = 1, col = 1:6,
+  title = "BRAR scale, k"
+)
+```
+
+\clearpage
+
+# Example Trials
+
+In what follows, some example trials are presented to show what the results may look like.
+In these examples, the average FACIT-Fatigue score under each treatment varies while the standard deviation of FACIT-Fatigue scores is assumed constant across all treatments at $\sigma=10$. Drop-out is assumed to be 80% independent of treatment; the number enrolled excludes drop-outs.
+
+```{r}
+#| label: example-functions
+plot_accrual <- function(dat, i = 1) {
+
+    tmp <- dat[analysis == i, .(variable, n_enr, n_obs)]
+    tmp[, Treatment := str_replace(variable, "trt", "")] 
+    ggplot(tmp, aes(Treatment, n_enr)) +
+        geom_bar(stat = "identity", alpha = 0.5) +
+        geom_bar(aes(y = n_obs), stat = "identity") +
+        geom_text(aes(label = n_enr, y = n_enr + 10), size = 2.5, family = "Palatino") +
+        labs(y = "Number enrolled\n(observed outcomes)") +
+        ylim(0, 200) +
+        theme(legend.position = "none")  
+}
+
+plot_treat_means <- function(dat, i = 1) {
+    tmp <- dat[analysis == i]
+    tmp[, `:=`(
+        Treatment = str_replace(variable, "trt", ""),
+        Decision =  fcase(
+            is.na(i_eff), "",
+            i_eff == 1, "Effective",
+            i_inf == 1, "Harmful",
+            default = "None")
+    )]
+    ggplot(tmp, aes(Treatment, trt_mean)) +
+        geom_point(size = 1) +
+        geom_errorbar(aes(
+            ymin = trt_mean - 1.96*sqrt(trt_var), 
+            ymax = trt_mean + 1.96*sqrt(trt_var)), 
+            width = 0.1) +
+        annotate(geom = "text", y=56, x=0, label = "Pr(effective)", size = 2.25, fontface = "bold", family = "Palatino") +
+        annotate(geom = "text", y=60, x=0, label = "Pr(superior)", size = 2.25, fontface = "bold", family = "Palatino") +
+        annotate(geom = "text", y = 52, x = 0, label = "Decision", size = 2.25, fontface = "bold", family = "Palatino") +
+        geom_text(aes(label = ifelse(is.na(p_eff), "", sprintf("%.2f", p_eff)), y = 56), size = 2.25) +
+        geom_text(aes(label = ifelse(is.na(p_supr), "", sprintf("%.2f", p_supr)), y = 60), size = 2.25) +
+        geom_text(aes(label = Decision, y = 52, colour = Decision), size = 2.25) +
+        geom_text(aes(label = sprintf("%2.1f", trt_mean), x = Treatment, y = trt_mean + 4*sqrt(trt_var)), size = 2.25) +
+        labs(y = "Model treatment\nmeans") +
+        scale_colour_manual(values = c(
+            "None" = 1, 
+            "Inferior" = "red", 
+            "Harmful" = "red",
+            "Inf+Hrm" = "red",
+            "Superior" = "blue",
+            "Effective" = "green",
+            "Sup+Eff" = "purple")) +
+        coord_cartesian(ylim = c(30, 60), xlim = c(0, 4)) +
+        theme(legend.position = "none")
+}
+```
+
+
+```{r}
+#| label: fig-example-1
+#| fig-cap: Example 1
+#| fig-height: 5.5
+#| fig-width: 6
+dropout <- 0.8
+nseq <- c(200, 300, 400) * dropout
+k <- 0.5
+
+set.seed(123)
+dat1 <- simulate_continuous_outcome(
+  nsubj = max(nseq), means = c(40, 41, 41, 41), sigma = 10, trunc = TRUE)
+res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, dropeff = TRUE)
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
+(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2)) / 
+(plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
+```
+
+```{r}
+#| label: fig-example-2
+#| fig-cap: Example 2
+#| fig-height: 5.5
+#| fig-width: 6
+set.seed(4124)
+dat2 <- simulate_continuous_outcome(
+  nsubj = max(nseq), means = c(40, 35, 45, 41), sigma = 10, trunc = TRUE)
+res2 <- simulate_trial_with_control3(nseq, dat = dat2, brar = 2, brar_k = k, dropeff = TRUE)
+(plot_accrual(res2, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res2, 1)) / 
+(plot_accrual(res2, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res2, 2)) / 
+(plot_accrual(res2, 3) + labs(subtitle = "Final") | plot_treat_means(res2, 3))
+```
+
+```{r}
+#| label: fig-example-3
+#| fig-cap: Example 3
+#| fig-height: 5.5
+#| fig-width: 6
+set.seed(1351)
+dat3 <- simulate_continuous_outcome(
+  nsubj = max(nseq), means = c(38, 43, 43, 43), sigma = 10, trunc = TRUE)
+res3 <- simulate_trial_with_control3(nseq, dat = dat3, brar = 2, brar_k = k, dropeff = TRUE)
+(plot_accrual(res3, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res3, 1)) / 
+(plot_accrual(res3, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res3, 2)) / 
+(plot_accrual(res3, 3) + labs(subtitle = "Final") | plot_treat_means(res3, 3))
+```
+
+```{r}
+#| label: fig-example-4
+#| fig-cap: Example 4
+#| fig-height: 5.5
+#| fig-width: 6
+set.seed(901358)
+dat4 <- simulate_continuous_outcome(nsubj = max(nseq), means = c(35, 42, 44, 46), sigma = 10, trunc = TRUE)
+res4 <- simulate_trial_with_control3(nseq, dat = dat4, brar = 2, brar_k = k, dropeff = TRUE)
+(plot_accrual(res4, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res4, 1)) / 
+(plot_accrual(res4, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res4, 2)) / 
+(plot_accrual(res4, 3) + labs(subtitle = "Final") | plot_treat_means(res4, 3))
+```
+
+```{r}
+#| label: fig-example-5
+#| fig-cap: Example 5
+#| fig-height: 5.5
+#| fig-width: 6
+set.seed(32413)
+dat5 <- simulate_continuous_outcome(nsubj = max(nseq), means = c(40, 35, 33, 32), sigma = 10, trunc = TRUE)
+res5 <- simulate_trial_with_control3(nseq, dat = dat5, brar = 2, brar_k = k, dropeff = TRUE)
+(plot_accrual(res5, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res5, 1)) / 
+(plot_accrual(res5, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res5, 2)) / 
+(plot_accrual(res5, 3) + labs(subtitle = "Final") | plot_treat_means(res5, 3))
+```
+
+
+\clearpage
+
+# Group-sequential Operating Characteristics
+
+The simulations presented here assume:
+
+- expected accrual of 3 participants per week according to homogeneous Poisson process, so at each interim expect $\approx$ 36 enrolled but without follow-up.
+- interim analysis when 200 and 300 participants reach their primary endpoint, final at 400 or after early stopping.
+- 20% drop-out, so that, for example when 100 participants reach their primary endpoint, 20 have missing 12-week FACIT-Fatigue data.
+- decision thresholds of $\epsilon_0 = \epsilon_1 \in \{0.98, 0.985\}$.
+- ignores repeated measures analysing 12-week FACIT-Fatigue as response in a linear model conditional on treatment group 
+
+```{r}
+#| label: load-sim-data
+sim_files <- grep("drop_effective_[0-9]+", list.files(res_dir), value = T)
+res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
+sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
+sim_result <- rbindlist(lapply(res, function(x) x[[2]]), idcol = "config")
+sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
+
+sim_result[, Treatment := as.integer(gsub("trt", "", variable))]
+sim_config[, `:=`(
+  Effect = sapply(means, function(x) (x[2] - x[1])) / sigma,
+  `True means` = sapply(means, function(x) paste(sprintf("%.1f", x), collapse = ", "))
+)]
+```
+
+```{r}
+sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
+sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
+sim_final <- sim_final[sim_config, on = "config"]
+sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by = 1:nrow(sim_final)]
+```
+
+## No BRAR
+
+```{r}
+#| label: tbl-oc-overall
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, no BRAR, $\epsilon = 0.98$.
+oc_summary <- sim_final[brar == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any effective` = any(i_eff == 1, na.rm = TRUE),
+    `All effective` = all(i_eff == 1, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:3)]
+oc_summary <- oc_summary[, lapply(.SD, mean), keyby = .(config, `True means`), .SDcols = outcols]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r}
+#| label: tbl-oc-summary
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR.
+oc_summary <- sim_final[brar == 0 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+  # kable_styling(latex_options = "HOLD_position", font_size = 9)
+  # collapse_rows(1:2, latex_hline = "major", valign = "top")
+# kabtab
+# writeLines(kabtab, con = file.path("outputs", "tables", "trial-oc-98.tex"))
+```
+
+```{r}
+#| label: fig-dist-sample-size
+#| fig-cap: Distribution of number of participants allocated to each treatment by effect size and number of affected treatments.
+#| fig-height: 2
+#| fig-width: 5
+ggplot(
+  sim_final[brar == 0 & eff_eps == 0.98 & trunc == FALSE, .(config, Effect, n_enr, variable)],
+  aes(variable, n_enr)
+) +
+  facet_wrap( ~ config, ncol = 5) +
+  # geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  geom_violin(scale = "width", adjust = 1) +
+  labs(x = "Treatment arm", y = "Number allocated") +
+  scale_x_discrete(labels = 0:3) +
+  scale_y_continuous(breaks = seq(25, 150, 25))
+```
+
+\clearpage
+
+## BRAR - $k = 0.25$
+
+```{r}
+#| label: tbl-oc-overall-2
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, with BRAR k=0.25.
+oc_summary <- sim_final[brar == 2 & brar_k == 0.25 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any effective` = any(i_eff == 1, na.rm = TRUE),
+    `All effective` = all(i_eff == 1, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:3)]
+oc_summary <- oc_summary[, lapply(.SD, mean), keyby = .(config, `True means`), .SDcols = outcols]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r oc-summary}
+#| label: tbl-oc-summary-2
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, with BRAR k=0.25.
+oc_summary <- sim_final[brar == 2 & brar_k == 0.25 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+  # kable_styling(latex_options = "HOLD_position", font_size = 9)
+  # collapse_rows(1:2, latex_hline = "major", valign = "top")
+# kabtab
+# writeLines(kabtab, con = file.path("outputs", "tables", "trial-oc-98.tex"))
+```
+
+```{r}
+#| label: fig-dist-sample-size-2
+#| fig-cap: Distribution of number of participants allocated to each treatment by effect size and number of affected treatments.
+#| fig-height: 2
+#| fig-width: 5
+ggplot(
+  sim_final[brar == 2 & brar_k == 0.25 & trunc == FALSE, .(config, Effect, n_enr, variable)],
+  aes(variable, n_enr)
+) +
+  facet_wrap( ~ config, ncol = 5) +
+  # geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  geom_violin(scale = "width", adjust = 1) +
+  labs(x = "Treatment arm", y = "Number allocated") +
+  scale_x_discrete(labels = 0:3) +
+  scale_y_continuous(breaks = seq(25, 150, 25))
+```
+
+\clearpage
+
+## BRAR - $k = 0.5$
+
+```{r}
+#| label: tbl-oc-overall-3
+#| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, with BRAR k=0.5.
+oc_summary <- sim_final[brar == 2 & brar_k == 0.5 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    `Any effective` = any(i_eff == 1, na.rm = TRUE),
+    `All effective` = all(i_eff == 1, na.rm = TRUE),
+    `Any harmful` = any(i_inf == 1, na.rm = TRUE),
+    `All harmful` = all(i_inf == 1, na.rm = TRUE)
+  ),
+  keyby = list(config, `True means`, trial)
+]
+outcols <- colnames(oc_summary)[-(1:3)]
+oc_summary <- oc_summary[, lapply(.SD, mean), keyby = .(config, `True means`), .SDcols = outcols]
+
+kable(oc_summary,
+  format = "latex",
+  align = "lrrrr",
+  digits = 2,
+  linesep = '',
+  booktabs = TRUE
+) |>
+  kable_styling(latex_options = "HOLD_position")
+```
+
+```{r oc-summary}
+#| label: tbl-oc-summary-3
+#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, with BRAR k = 0.5.
+oc_summary <- sim_final[brar == 2 & brar_k == 0.5 & eff_eps == 0.98 & trunc == FALSE,
+  .(
+    Allocated = sprintf("%.0f", mean(n_enr)),
+    Superior = sprintf("%.2f", mean(i_supr)),
+    Effective = sprintf("%.2f", mean(i_eff)),
+    Ineffective = sprintf("%.2f", mean(i_inf)),
+    Active = sprintf("%.2f", mean(i_acti))
+  ),
+  keyby = list(config, Treatment = variable, Truth)
+]
+oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[oc_summary == "NA"] <- " "
+
+kable(oc_summary,
+  # format = "latex",
+  align = "lllrrrr",
+  linesep = c(rep('', 3), '\\addlinespace'),
+  booktabs = TRUE,
+  longtable = TRUE
+)
+  # kable_styling(latex_options = "HOLD_position", font_size = 9)
+  # collapse_rows(1:2, latex_hline = "major", valign = "top")
+# kabtab
+# writeLines(kabtab, con = file.path("outputs", "tables", "trial-oc-98.tex"))
+```
+
+```{r}
+#| label: fig-dist-sample-size-3
+#| fig-cap: Distribution of number of participants allocated to each treatment by effect size and number of affected treatments.
+#| fig-height: 2
+#| fig-width: 5
+ggplot(
+  sim_final[brar == 2 & brar_k == 0.5 & trunc == FALSE, .(config, Effect, n_enr, variable)],
+  aes(variable, n_enr)
+) +
+  facet_wrap( ~ config, ncol = 5) +
+  # geom_boxplot(size = 0.25, outlier.size = 0.1) +
+  geom_violin(scale = "width", adjust = 1) +
+  labs(x = "Treatment arm", y = "Number allocated") +
+  scale_x_discrete(labels = 0:3) +
+  scale_y_continuous(breaks = seq(25, 150, 25))
+```
