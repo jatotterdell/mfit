@@ -120,7 +120,7 @@ for (z in run_row) {
     saveRDS(
         list(cfg = cfg[z], res = resl, runtime = end_time - start_time),
         paste0(
-            "~/out_files/mfit_sims/sim_final_supdrop_",
+            "~/out/mfit-sims/sim_final_supdrop_",
             formatC(z, width = 2, flag = "0"),
             ".rds"
         )
