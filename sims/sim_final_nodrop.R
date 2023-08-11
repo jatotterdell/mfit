@@ -40,6 +40,7 @@ mean_cfg <- list(
     c(mean, mean + sigma, mean, mean),
     c(mean, mean + sigma / 2, mean, mean),
     c(mean, mean + sigma / 2, mean + sigma / 2, mean),
+    c(mean, mean + sigma / 2, mean + sigma / 2, mean + sigma / 2),
     c(mean, mean + sigma, mean + sigma / 2, mean),
     c(mean, mean + sigma, mean + sigma / 2, mean + sigma / 2),
     c(mean, mean - sigma / 2, mean - sigma / 2, mean - sigma / 2)
@@ -87,6 +88,7 @@ run_row <- seq_len(nrow(cfg))
 
 # ----- Loop over configurations and save results -----
 
+dir.create(file.path("~", "out", "mfit-sims"))
 for (z in run_row) {
     start_time <- Sys.time()
 
@@ -120,7 +122,7 @@ for (z in run_row) {
     saveRDS(
         list(cfg = cfg[z], res = resl, runtime = end_time - start_time),
         paste0(
-            "~/out_files/mfit_sims/sim_final_nodrop_",
+            "~/out/mfit-sims/sim_final_nodrop_",
             formatC(z, width = 2, flag = "0"),
             ".rds"
         )
