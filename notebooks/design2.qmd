@@ -311,8 +311,6 @@ res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, bra
 
 # Group-sequential Operating Characteristics
 
-## Keep Effective Treatment if Superior
-
 ```{r}
 #| label: load-sim-data-keepsup
 sim_files <- grep("sim_final_nodrop_[0-9]+", list.files(res_dir), value = T)
@@ -336,12 +334,12 @@ sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by =
 ```{r}
 #| label: tbl-oc-overall-098-keepsup
 #| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, $\epsilon = 0.98$.
-oc_summary <- sim_final[eff_eps == 0.98 & trunc == FALSE,
+oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
   .(
     `Any superior and effective` = any(i_suprandeff == 1, na.rm = TRUE),
-    `Any superior` = any(p_supr > 0.97, na.rm = TRUE),
-    `Any effective` = any(p_eff > 0.97, na.rm = TRUE),
-    `All effective` = all(p_eff > 0.97, na.rm = TRUE),
+    `Any superior` = any(p_supr > 0.98, na.rm = TRUE),
+    `Any effective` = any(p_eff > 0.98, na.rm = TRUE),
+    `All effective` = all(p_eff > 0.98, na.rm = TRUE),
     `Any harmful` = any(i_inf == 1, na.rm = TRUE),
     `All harmful` = all(i_inf == 1, na.rm = TRUE)
   ),
@@ -350,100 +348,17 @@ oc_summary <- sim_final[eff_eps == 0.98 & trunc == FALSE,
 outcols <- colnames(oc_summary)[-(1:5)]
 oc_summary <- oc_summary[, 
     lapply(.SD, mean), 
-    keyby = .(config, brar, brar_min, `True means`), .SDcols = outcols
+    keyby = .(config, `True means`), .SDcols = outcols
 ]
 
-kable(oc_summary,
+kable(oc_summary[, -1],
   format = "latex",
   align = "lrrrr",
   digits = 2,
   linesep = '',
   booktabs = TRUE
 ) |>
-  kable_styling(latex_options = "HOLD_position")
-```
-
-{{< pagebreak >}}
-
-```{r}
-#| label: tbl-oc-summary-1-098-keepsup
-#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, no BRAR.
-oc_summary <- sim_final[brar == 0 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
-  .(
-    Allocated = sprintf("%.0f", mean(n_enr)),
-    Superior = sprintf("%.2f", mean(p_supr > 0.98)),
-    Effective = sprintf("%.2f", mean(i_eff == 1)),
-    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
-    Ineffective = sprintf("%.2f", mean(i_inf)),
-    Active = sprintf("%.2f", mean(i_acti))
-  ),
-  keyby = list(config, Treatment = variable, Truth)
-]
-oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
-oc_summary[oc_summary == "NA"] <- " "
-
-kable(oc_summary,
-  # format = "latex",
-  align = "lllrrrr",
-  linesep = c(rep('', 3), '\\addlinespace'),
-  booktabs = TRUE,
-  longtable = TRUE
-)
-```
-
-{{< pagebreak >}}
-
-```{r}
-#| label: tbl-oc-summary-2-098-keepsup
-#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR unbounded.
-oc_summary <- sim_final[brar == 2 & brar_min == 0 & eff_eps == 0.98 & trunc == FALSE,
-  .(
-    Allocated = sprintf("%.0f", mean(n_enr)),
-    Superior = sprintf("%.2f", mean(i_supr == 1)),
-    Effective = sprintf("%.2f", mean(i_eff == 1)),
-    `Effective end` = sprintf("%.2f", mean(p_eff > 0.98)),
-    Ineffective = sprintf("%.2f", mean(i_inf)),
-    Active = sprintf("%.2f", mean(i_acti))
-  ),
-  keyby = list(config, Treatment = variable, Truth)
-]
-oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
-oc_summary[oc_summary == "NA"] <- " "
-
-kable(oc_summary,
-  # format = "latex",
-  align = "lllrrrr",
-  linesep = c(rep('', 3), '\\addlinespace'),
-  booktabs = TRUE,
-  longtable = TRUE
-)
-```
-
-{{< pagebreak >}}
-
-```{r}
-#| label: tbl-oc-summary-3-098-keepsup
-#| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded 0.1.
-oc_summary <- sim_final[brar == 2 & brar_min == 0.10 & eff_eps == 0.98 & trunc == FALSE,
-  .(
-    Allocated = sprintf("%.0f", mean(n_enr)),
-    Superior = sprintf("%.2f", mean(i_suprandeff == 1)),
-    Effective = sprintf("%.2f", mean(p_eff > 0.98)),
-    Ineffective = sprintf("%.2f", mean(i_inf)),
-    Active = sprintf("%.2f", mean(i_acti))
-  ),
-  keyby = list(config, Treatment = variable, Truth)
-]
-oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
-oc_summary[oc_summary == "NA"] <- " "
-
-kable(oc_summary,
-  # format = "latex",
-  align = "lllrrrr",
-  linesep = c(rep('', 3), '\\addlinespace'),
-  booktabs = TRUE,
-  longtable = TRUE
-)
+  kable_styling(latex_options = "HOLD_position", font_size = 9)
 ```
 
 {{< pagebreak >}}
@@ -464,7 +379,7 @@ oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc =
 oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
 oc_summary[oc_summary == "NA"] <- " "
 
-kable(oc_summary,
+kable(oc_summary[, -1],
   # format = "latex",
   align = "lllrrrr",
   linesep = c(rep('', 3), '\\addlinespace'),
