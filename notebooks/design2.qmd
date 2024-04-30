@@ -36,7 +36,7 @@ knitr::opts_chunk$set(
 )
 
 knitr::opts_knit$set(
-    root.dir = ".."
+  root.dir = ".."
 )
 
 res_dir <- "~/out/mfit-sims/"
@@ -264,11 +264,12 @@ k <- 0.5
 
 set.seed(8124)
 dat1 <- simulate_continuous_outcome(
-  nsubj = max(nseq), means = c(40, 40, 40, 40), sigma = 10, trunc = TRUE)
+  nsubj = max(nseq), means = c(40, 40, 40, 40), sigma = 10, trunc = TRUE
+)
 res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
-(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
-(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2)) / 
-(plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) /
+  (plot_accrual(res1, 2) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 2)) /
+  (plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
 ```
 
 ```{r}
@@ -282,11 +283,12 @@ k <- 0.5
 
 set.seed(123)
 dat1 <- simulate_continuous_outcome(
-  nsubj = max(nseq), means = c(40, 45, 43, 43), sigma = 10, trunc = TRUE)
+  nsubj = max(nseq), means = c(40, 45, 43, 43), sigma = 10, trunc = TRUE
+)
 res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
-(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
-(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2)) / 
-(plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) /
+  (plot_accrual(res1, 2) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 2)) /
+  (plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
 ```
 
 ```{r}
@@ -300,11 +302,12 @@ k <- 0.5
 
 set.seed(7135)
 dat1 <- simulate_continuous_outcome(
-  nsubj = max(nseq), means = c(40, 35, 35, 35), sigma = 10, trunc = TRUE)
+  nsubj = max(nseq), means = c(40, 35, 35, 35), sigma = 10, trunc = TRUE
+)
 res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
-(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) / 
-(plot_accrual(res1, 2) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 2)) /
-(plot_accrual(res1, 3) + labs(subtitle = "Interim 2")| plot_treat_means(res1, 3))
+(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) /
+  (plot_accrual(res1, 2) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 2)) /
+  (plot_accrual(res1, 3) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 3))
 ```
 
 \clearpage
@@ -346,16 +349,16 @@ oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc =
   keyby = list(config, brar, brar_min, `True means`, trial)
 ]
 outcols <- colnames(oc_summary)[-(1:5)]
-oc_summary <- oc_summary[, 
-    lapply(.SD, mean), 
-    keyby = .(config, `True means`), .SDcols = outcols
+oc_summary <- oc_summary[,
+  lapply(.SD, mean),
+  keyby = .(config, `True means`), .SDcols = outcols
 ]
 
 kable(oc_summary[, -1],
   format = "latex",
   align = "lrrrr",
   digits = 2,
-  linesep = '',
+  linesep = "",
   booktabs = TRUE
 ) |>
   kable_styling(latex_options = "HOLD_position", font_size = 9)
@@ -386,4 +389,40 @@ kable(oc_summary[, -1],
   booktabs = TRUE,
   longtable = TRUE
 )
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-by-interim
+#| fig-cap: Probability effective.
+#| fig-height: 6
+#| fig-width: 6
+library(gghalves)
+library(ggh4x)
+library(ggbeeswarm)
+
+sim_result <- sim_result[sim_config, on = "config"]
+ggplot(
+  sim_result[
+    brar == 2 &
+      brar_min == 0.15 &
+      eff_eps == 0.98 &
+      trunc == FALSE &
+      Treatment != 0 &
+      trial %in% 1:500
+  ],
+  aes(interaction(variable, analysis, sep = "!"), p_eff)
+) +
+  geom_half_boxplot(side = "r", width = 0.5, outlier.size = 1) +
+  gghalves::geom_half_point(
+    transformation = position_quasirandom(width = 0.1),
+    alpha = 0.25,
+    shape = 21,
+    fill = "white",
+    size = 1,
+    side = "l"
+  ) +
+  facet_wrap(~`True means`, ncol = 2) +
+  scale_x_discrete(guide = guide_axis_nested(delim = "!"), "Analysis (arm)")
 ```
