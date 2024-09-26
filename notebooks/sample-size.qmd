@@ -1,0 +1,99 @@
+---
+
+---
+
+# Introduction
+
+M-FIT is a 4-arm parallel trial evaluating the effect of structured exercise interventions on fatigue as measured by FACIT-Fatigue.
+
+# Primary Outcome
+
+FACIT-Fatigue is a 13-item 5-point (0 to 4) Likert scale with an aggregate score ranging from 0 to 52.
+Higher scores imply less fatigue.
+
+The distribution of FACIT-Fatigue scores tends to be skewed with a long tail towards lower scores.
+
+::: {#fig-facit-fatigue-dist}
+![](facit-fatigue-example-dist.pdf){width=80%}
+
+Example distribution of FACIT-Fatigue scores, (taken from Jhamb M, Abdel-Kader K, Yabes J, Wang Y, Weisbord SD, Unruh M, Steel JL. Comparison of Fatigue, Pain, and Depression in Patients With Advanced Kidney Disease and Cancer-Symptom Burden and Clusters. J Pain Symptom Manage. 2019 Mar;57(3):566-575.e3. doi: 10.1016/j.jpainsymman.2018.12.006. Epub 2018 Dec 13. PMID: 30552961; PMCID: PMC6382584).
+:::
+
+# Fixed-Sample Size Power
+
+```{r}
+#| label: fixed-ss-power
+drop_out <- seq(1, 0.8, -0.05)
+max_n <- 100
+effect_size <- seq(0, 1, 0.005)
+power <- sapply(drop_out, function(d) {
+  power.t.test(
+    n = max_n * d,
+    delta = effect_size,
+    sig.level = 0.025,
+    alternative = "one.sided"
+  )$power
+})
+```
+
+Ignoring repeated measures, a sample size of 100 participants per arm, assuming drop-out of 20%, would provide power 0.8 for an effect size of $\Delta = \mu_1-\mu_0 = `r effect_size[which(power[, 5] >= 0.8)[1]]`\sigma$.
+For example, assuming that FACIT-Fatigue scores are distributed with standard deviation of 5, then the sample size would have power 0.8 for an increase of 2.25 in group means from control to active treatment.
+
+```{r}
+#| label: fig-fixed-ss-power
+#| fig-cap: Fixed sample size power for two sample $t$-test of size $\alpha=0.025$ with $n=100$ per arm, assuming varying drop-out and effect size, $\delta$, relative to the standard deviation $\sigma$.
+par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Palatino")
+matplot(effect_size, power,
+  type = "l", col = seq_along(drop_out), lty = 1,
+  xlab = expression("Effect size, " ~ delta * ", where" ~ mu[1] - mu[0] ~ "=" ~ delta * sigma),
+  ylab = "Power"
+)
+segments(
+  x0 = 0,
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = power[min(which(power[, 5] >= 0.8)), 5],
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+segments(
+  x0 = effect_size[min(which(power[, 5] >= 0.8))],
+  x1 = effect_size[min(which(power[, 5] >= 0.8))],
+  y0 = 0,
+  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+)
+legend("bottomright",
+  legend = formatC(100 * (1 - drop_out), width = 2),
+  lty = 1,
+  xjust = 1,
+  col = seq_along(drop_out),
+  cex = 1,
+  bty = "n",
+  title = "Drop-out, %"
+)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggborderline)
+library(paletteer)
+
+theme_set(theme_minimal())
+
+power <- expand_grid(
+  n = seq(25, 100, by = 1),
+  d = seq(0, 1, by = 0.005)
+) |>
+  mutate(
+    p = power.t.test(n, d, sig.level = 0.02, alternative = "one.sided")$power
+  )
+ggplot(power, aes(d, p, colour = n, group = n)) +
+  geom_line(linewidth = 1) +
+  geom_borderline(data = filter(power, n %in% c(25, 50, 75, 100)), linewidth = 1, bordercolour = "black") +
+  geom_hline(yintercept = 0.8, linetype = 2) +
+  paletteer::scale_colour_paletteer_c("ggthemes::Orange", breaks = seq(25, 100, by = 25)) +
+  labs(x = "Effect size", y = "Power", colour = "Sample size (per group)") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1)) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1)) +
+  theme(legend.position = "bottom")
+```
