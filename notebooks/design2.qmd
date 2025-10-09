@@ -2,7 +2,7 @@
 title: MFIT Trial Design
 subtitle: Trial Sample Size and Operating Characteristics
 author: James Totterdell
-date: "`r Sys.Date()`"
+date: 2023-04-11
 pdf-engine: pdflatex
 format:
   pdf:
@@ -13,7 +13,7 @@ format:
     colorlinks: true
     include-in-header: 
       text: |
-        \usepackage[scaled=.95]{gentium}
+        \usepackage{mathpazo}
         \usepackage{textcomp}
         \usepackage[T1]{fontenc}
         \usepackage{cabin}
@@ -104,24 +104,33 @@ For example, assuming that FACIT-Fatigue scores are distributed with standard de
 #| label: fig-fixed-ss-power
 #| fig-cap: Fixed sample size power for two sample $t$-test of size $\alpha=0.025$ with $n=100$ per arm, assuming varying drop-out and effect size, $\delta$, relative to the standard deviation $\sigma$.
 par(cex = 0.75, mar = c(4, 5, 1, 1), family = "Palatino")
-matplot(effect_size, power,
-  type = "l", col = seq_along(drop_out), lty = 1,
-  xlab = expression("Effect size, " ~ delta * ", where" ~ mu[1] - mu[0] ~ "=" ~ delta * sigma),
+matplot(
+  effect_size,
+  power,
+  type = "l",
+  col = seq_along(drop_out),
+  lty = 1,
+  xlab = expression(
+    "Effect size, " ~ delta * ", where" ~ mu[1] - mu[0] ~ "=" ~ delta * sigma
+  ),
   ylab = "Power"
 )
 segments(
   x0 = 0,
   x1 = effect_size[min(which(power[, 5] >= 0.8))],
   y0 = power[min(which(power[, 5] >= 0.8)), 5],
-  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+  y1 = power[min(which(power[, 5] >= 0.8)), 5],
+  lty = 2
 )
 segments(
   x0 = effect_size[min(which(power[, 5] >= 0.8))],
   x1 = effect_size[min(which(power[, 5] >= 0.8))],
   y0 = 0,
-  y1 = power[min(which(power[, 5] >= 0.8)), 5], lty = 2
+  y1 = power[min(which(power[, 5] >= 0.8)), 5],
+  lty = 2
 )
-legend("bottomright",
+legend(
+  "bottomright",
   legend = formatC(100 * (1 - drop_out), width = 2),
   lty = 1,
   xjust = 1,
@@ -190,9 +199,22 @@ where $x_{\texttt{trt}[i]}$ for $\texttt{trt}[i]\in\{0,1,2,3\}$ denotes the trea
 
 ## Interim Analyses
 
-- drop if ineffective
-- drop if effective and superior?
-- update RAR with bounds (min of 0.1 or 0.15)
+A first interim analysis is planned to occur after 200 participants have completed 12-weeks of follow-up.
+An additional interim will occur after 300 participants have completed 12-weeks of follow-up and the final analysis at trial completion if it not stopped at one of the two planned interims.
+
+At each interim analysis, the active interventions will be compared with the attention control.
+If an active intervention is found to be inferior to attention control then it may be dropped.
+
+Target allocations will be updated using RAR.
+
+Formally, the decision rules are:
+
+- **Ineffective**: if $\omega_j < 1 - \epsilon_1$ then treatment $j$ has probability no more than $\epsilon_1$ of being effective compared to control and that intervention may be dropped as ineffective to focus recruitment on the other interventions.
+- **Stopping**: the trial may stop early of all active interventions have been identified as ineffective.
+
+Note that, once a treatment has been dropped, we do not allow it to come back into the trial.
+Therefore, once a treatment has been declared ineffective, then that assertion is assumed to hold true for the remainder of the trial.
+An arm which has been dropped is excluded from calculations of $\pi_j$.
 
 \clearpage
 
@@ -204,52 +226,102 @@ In these examples, the average FACIT-Fatigue score under each treatment varies w
 ```{r}
 #| label: example-functions
 plot_accrual <- function(dat, i = 1) {
-
-    tmp <- dat[analysis == i, .(variable, n_enr, n_obs)]
-    tmp[, Treatment := str_replace(variable, "trt", "")] 
-    ggplot(tmp, aes(Treatment, n_enr)) +
-        geom_bar(stat = "identity", alpha = 0.5) +
-        geom_bar(aes(y = n_obs), stat = "identity") +
-        geom_text(aes(label = n_enr, y = n_enr + 10), size = 2.5, family = "Palatino") +
-        labs(y = "Number enrolled\n(observed outcomes)") +
-        ylim(0, 200) +
-        theme(legend.position = "none")  
+  tmp <- dat[analysis == i, .(variable, n_enr, n_obs)]
+  tmp[, Treatment := str_replace(variable, "trt", "")]
+  ggplot(tmp, aes(Treatment, n_enr)) +
+    geom_bar(stat = "identity", alpha = 0.5) +
+    geom_bar(aes(y = n_obs), stat = "identity") +
+    geom_text(
+      aes(label = n_enr, y = n_enr + 10),
+      size = 2.5,
+      family = "Palatino"
+    ) +
+    labs(y = "Number enrolled\n(observed outcomes)") +
+    ylim(0, 200) +
+    theme(legend.position = "none")
 }
 
 plot_treat_means <- function(dat, i = 1) {
-    tmp <- dat[analysis == i]
-    tmp[, `:=`(
-        Treatment = str_replace(variable, "trt", ""),
-        Decision =  fcase(
-            is.na(i_eff), "",
-            i_eff == 1, "Effective",
-            i_inf == 1, "Harmful",
-            default = "None")
-    )]
-    ggplot(tmp, aes(Treatment, trt_mean)) +
-        geom_point(size = 1) +
-        geom_errorbar(aes(
-            ymin = trt_mean - 1.96*sqrt(trt_var), 
-            ymax = trt_mean + 1.96*sqrt(trt_var)), 
-            width = 0.1) +
-        annotate(geom = "text", y=56, x=0, label = "Pr(effective)", size = 2.25, fontface = "bold", family = "Palatino") +
-        annotate(geom = "text", y=60, x=0, label = "Pr(superior)", size = 2.25, fontface = "bold", family = "Palatino") +
-        annotate(geom = "text", y = 52, x = 0, label = "Decision", size = 2.25, fontface = "bold", family = "Palatino") +
-        geom_text(aes(label = ifelse(is.na(p_eff), "", sprintf("%.2f", p_eff)), y = 56), size = 2.25) +
-        geom_text(aes(label = ifelse(is.na(p_supr), "", sprintf("%.2f", p_supr)), y = 60), size = 2.25) +
-        geom_text(aes(label = Decision, y = 52, colour = Decision), size = 2.25) +
-        geom_text(aes(label = sprintf("%2.1f", trt_mean), x = Treatment, y = trt_mean + 4*sqrt(trt_var)), size = 2.25) +
-        labs(y = "Model treatment\nmeans") +
-        scale_colour_manual(values = c(
-            "None" = 1, 
-            "Inferior" = "red", 
-            "Harmful" = "red",
-            "Inf+Hrm" = "red",
-            "Superior" = "blue",
-            "Effective" = "green",
-            "Sup+Eff" = "purple")) +
-        coord_cartesian(ylim = c(30, 60), xlim = c(0, 4)) +
-        theme(legend.position = "none")
+  tmp <- dat[analysis == i]
+  tmp[, `:=`(
+    Treatment = str_replace(variable, "trt", ""),
+    Decision = fcase(
+      is.na(i_eff),
+      "",
+      i_eff == 1,
+      "Effective",
+      i_inf == 1,
+      "Harmful",
+      default = "None"
+    )
+  )]
+  ggplot(tmp, aes(Treatment, trt_mean)) +
+    geom_point(size = 1) +
+    geom_errorbar(
+      aes(
+        ymin = trt_mean - 1.96 * sqrt(trt_var),
+        ymax = trt_mean + 1.96 * sqrt(trt_var)
+      ),
+      width = 0.1
+    ) +
+    annotate(
+      geom = "text",
+      y = 56,
+      x = 0,
+      label = "Pr(effective)",
+      size = 2.25,
+      fontface = "bold",
+      family = "Palatino"
+    ) +
+    annotate(
+      geom = "text",
+      y = 60,
+      x = 0,
+      label = "Pr(superior)",
+      size = 2.25,
+      fontface = "bold",
+      family = "Palatino"
+    ) +
+    annotate(
+      geom = "text",
+      y = 52,
+      x = 0,
+      label = "Decision",
+      size = 2.25,
+      fontface = "bold",
+      family = "Palatino"
+    ) +
+    geom_text(
+      aes(label = ifelse(is.na(p_eff), "", sprintf("%.2f", p_eff)), y = 56),
+      size = 2.25
+    ) +
+    geom_text(
+      aes(label = ifelse(is.na(p_supr), "", sprintf("%.2f", p_supr)), y = 60),
+      size = 2.25
+    ) +
+    geom_text(aes(label = Decision, y = 52, colour = Decision), size = 2.25) +
+    geom_text(
+      aes(
+        label = sprintf("%2.1f", trt_mean),
+        x = Treatment,
+        y = trt_mean + 4 * sqrt(trt_var)
+      ),
+      size = 2.25
+    ) +
+    labs(y = "Model treatment\nmeans") +
+    scale_colour_manual(
+      values = c(
+        "None" = 1,
+        "Inferior" = "red",
+        "Harmful" = "red",
+        "Inf+Hrm" = "red",
+        "Superior" = "blue",
+        "Effective" = "green",
+        "Sup+Eff" = "purple"
+      )
+    ) +
+    coord_cartesian(ylim = c(30, 60), xlim = c(0, 4)) +
+    theme(legend.position = "none")
 }
 ```
 
@@ -264,11 +336,25 @@ k <- 0.5
 
 set.seed(8124)
 dat1 <- simulate_continuous_outcome(
-  nsubj = max(nseq), means = c(40, 40, 40, 40), sigma = 10, trunc = TRUE
+  nsubj = max(nseq),
+  means = c(40, 40, 40, 40),
+  sigma = 10,
+  trunc = TRUE
 )
-res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
-(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) /
-  (plot_accrual(res1, 2) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 2)) /
+res1 <- simulate_trial_with_control3(
+  nseq,
+  dat = dat1,
+  brar = 2,
+  brar_k = k,
+  brar_min = 0.15,
+  dropeff = FALSE
+)
+(plot_accrual(res1, 1) +
+  labs(subtitle = "Interim 1") |
+  plot_treat_means(res1, 1)) /
+  (plot_accrual(res1, 2) +
+    labs(subtitle = "Interim 2") |
+    plot_treat_means(res1, 2)) /
   (plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
 ```
 
@@ -283,11 +369,25 @@ k <- 0.5
 
 set.seed(123)
 dat1 <- simulate_continuous_outcome(
-  nsubj = max(nseq), means = c(40, 45, 43, 43), sigma = 10, trunc = TRUE
+  nsubj = max(nseq),
+  means = c(40, 45, 43, 43),
+  sigma = 10,
+  trunc = TRUE
 )
-res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
-(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) /
-  (plot_accrual(res1, 2) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 2)) /
+res1 <- simulate_trial_with_control3(
+  nseq,
+  dat = dat1,
+  brar = 2,
+  brar_k = k,
+  brar_min = 0.15,
+  dropeff = FALSE
+)
+(plot_accrual(res1, 1) +
+  labs(subtitle = "Interim 1") |
+  plot_treat_means(res1, 1)) /
+  (plot_accrual(res1, 2) +
+    labs(subtitle = "Interim 2") |
+    plot_treat_means(res1, 2)) /
   (plot_accrual(res1, 3) + labs(subtitle = "Final") | plot_treat_means(res1, 3))
 ```
 
@@ -302,12 +402,28 @@ k <- 0.5
 
 set.seed(7135)
 dat1 <- simulate_continuous_outcome(
-  nsubj = max(nseq), means = c(40, 35, 35, 35), sigma = 10, trunc = TRUE
+  nsubj = max(nseq),
+  means = c(40, 35, 35, 35),
+  sigma = 10,
+  trunc = TRUE
 )
-res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, brar_min = 0.15, dropeff = FALSE)
-(plot_accrual(res1, 1) + labs(subtitle = "Interim 1") | plot_treat_means(res1, 1)) /
-  (plot_accrual(res1, 2) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 2)) /
-  (plot_accrual(res1, 3) + labs(subtitle = "Interim 2") | plot_treat_means(res1, 3))
+res1 <- simulate_trial_with_control3(
+  nseq,
+  dat = dat1,
+  brar = 2,
+  brar_k = k,
+  brar_min = 0.15,
+  dropeff = FALSE
+)
+(plot_accrual(res1, 1) +
+  labs(subtitle = "Interim 1") |
+  plot_treat_means(res1, 1)) /
+  (plot_accrual(res1, 2) +
+    labs(subtitle = "Interim 2") |
+    plot_treat_means(res1, 2)) /
+  (plot_accrual(res1, 3) +
+    labs(subtitle = "Interim 2") |
+    plot_treat_means(res1, 3))
 ```
 
 \clearpage
@@ -316,6 +432,7 @@ res1 <- simulate_trial_with_control3(nseq, dat = dat1, brar = 2, brar_k = k, bra
 
 ```{r}
 #| label: load-sim-data-keepsup
+#| tbl-pos: "H"
 sim_files <- grep("sim_final_nodrop_[0-9]+", list.files(res_dir), value = T)
 res <- lapply(sim_files, function(f) readRDS(paste0(res_dir, f)))
 sim_config <- rbindlist(lapply(res, function(x) x[[1]]), idcol = "config")
@@ -325,19 +442,26 @@ sim_runtim <- sapply(res, function(x) x[[3]]) # in seconds
 sim_result[, Treatment := as.integer(gsub("trt", "", variable))]
 sim_config[, `:=`(
   Effect = sapply(means, function(x) (x[2] - x[1])) / sigma,
-  `True means` = sapply(means, function(x) paste(sprintf("%.1f", x), collapse = ", "))
+  `True means` = sapply(means, function(x) {
+    paste(sprintf("%.1f", x), collapse = ", ")
+  })
 )]
 
 sim_final <- sim_result[, .SD[.N], keyby = .(config, trial, variable)]
 sim_final[, p_enr := n_enr / sum(n_enr), keyby = .(config, trial)]
 sim_final <- sim_final[sim_config, on = "config"]
-sim_final[, Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])), by = 1:nrow(sim_final)]
+sim_final[,
+  Truth := sprintf("%.1f", sapply(means, \(x) x[Treatment + 1])),
+  by = 1:nrow(sim_final)
+]
 ```
 
 ```{r}
 #| label: tbl-oc-overall-098-keepsup
 #| tbl-cap: Summary of trial operating characteristics across all arms, n = 10,000 simulations, $\epsilon = 0.98$.
-oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
+#| tbl-pos: "H"
+oc_summary <- sim_final[
+  brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
   .(
     `Any superior and effective` = any(i_suprandeff == 1, na.rm = TRUE),
     `Any superior` = any(p_supr > 0.98, na.rm = TRUE),
@@ -351,17 +475,23 @@ oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc =
 outcols <- colnames(oc_summary)[-(1:5)]
 oc_summary <- oc_summary[,
   lapply(.SD, mean),
-  keyby = .(config, `True means`), .SDcols = outcols
+  keyby = .(config, `True means`),
+  .SDcols = outcols
 ]
 
-kable(oc_summary[, -1],
+kable(
+  oc_summary[, -1],
   format = "latex",
   align = "lrrrr",
   digits = 2,
   linesep = "",
   booktabs = TRUE
 ) |>
-  kable_styling(latex_options = "HOLD_position", font_size = 9)
+  kable_styling(
+    latex_options = "HOLD_position",
+    font_size = 8,
+    full_width = FALSE
+  )
 ```
 
 {{< pagebreak >}}
@@ -369,7 +499,9 @@ kable(oc_summary[, -1],
 ```{r}
 #| label: tbl-oc-summary-4-098-keepsup
 #| tbl-cap: Summary of trial operating characteristics, n = 10,000 simulations, BRAR bounded 0.15.
-oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
+#| tbl-pos: "H"
+oc_summary <- sim_final[
+  brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc == FALSE,
   .(
     Allocated = sprintf("%.0f", mean(n_enr)),
     Superior = sprintf("%.2f", mean(p_supr > 0.98)),
@@ -379,10 +511,13 @@ oc_summary <- sim_final[brar == 2 & brar_min == 0.15 & eff_eps == 0.98 & trunc =
   ),
   keyby = list(config, Treatment = variable, Truth)
 ]
-oc_summary[, Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))]
+oc_summary[,
+  Treatment := factor(Treatment, labels = c("0 - control", "1", "2", "3"))
+]
 oc_summary[oc_summary == "NA"] <- " "
 
-kable(oc_summary[, -1],
+kable(
+  oc_summary[, -1],
   # format = "latex",
   align = "lllrrrr",
   linesep = c(rep('', 3), '\\addlinespace'),
@@ -398,6 +533,7 @@ kable(oc_summary[, -1],
 #| fig-cap: Probability effective.
 #| fig-height: 6
 #| fig-width: 6
+#| include: false
 library(gghalves)
 library(ggh4x)
 library(ggbeeswarm)
